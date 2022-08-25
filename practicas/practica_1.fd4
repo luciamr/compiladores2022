@@ -1,0 +1,40 @@
+let resta =
+	fun(x : Nat) ->
+		fun(y : Nat) ->
+			x - y
+
+let mul =
+	fix (mul': Nat -> Nat -> Nat)(m : Nat) ->
+		fun(n : Nat) ->
+			ifz n then 0 else m + (mul' m (n-1))
+
+let exp =
+	fix (exp': Nat -> Nat -> Nat)(m : Nat) ->
+		fun(n : Nat) ->
+			ifz n then 1 else (mul m (exp' m (n-1)))
+
+let fact =
+	fix (fact' : Nat -> Nat)(m : Nat) ->
+		ifz (m - 1) then 1 else (mul m (fact' (m-1)))
+
+let true = fun(x : Nat) -> fun (y : Nat) -> x
+let false = fun(x : Nat) -> fun (y : Nat) -> y
+let ifthenselse = fun(x : Nat) -> x
+
+let pair = fun(x : Nat) -> fun(y : Nat) -> fun(z : Nat) -> ifz z then x else y
+let fst = fun(x : Nat) -> true x
+let snd = fun(x : Nat) -> false x
+
+let gcd =
+	fix(gcd' : Nat -> Nat -> Nat)(m : Nat) ->
+		fun(n : Nat) ->
+			ifz m
+				then n
+				else (ifz n
+						then m
+						else (ifz (n - m)
+								then (gcd' (m-n) n)
+                 	            else (gcd' m (n - m))))
+
+let R = fix (R': Nat -> (Nat -> Nat -> Nat) -> Nat -> Nat)(t1: Nat) -> fun(t2: Nat -> Nat -> Nat) -> fun(t3: Nat) ->
+					ifz t3 then t1 else t2 (R' t1 t2 (t3-1)) (t3-1)
