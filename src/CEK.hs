@@ -9,9 +9,10 @@ module CEK where
 
 import MonadFD4 ( MonadFD4, failFD4, lookupDecl, printFD4 )
 import Lang
-import Common ( Pos )
+import Common ( Pos(..) )
 import Eval ( semOp )
-import PPrint ( ppName)
+import PPrint ( ppName )
+import Subst ( substN )
 
 data Val = N Int | Cls Closure
 type Env = [Val]
@@ -26,15 +27,10 @@ data Frame =
     | FrmLet Env Name TTerm -- ρ · let x = □ in t
 type Kont = [Frame]
 
-runCEK :: MonadFD4 m => Pos -> TTerm -> Env -> Kont -> m TTerm
-runCEK p tt [] [] = do
+runCEK :: MonadFD4 m => TTerm -> m TTerm
+runCEK tt = do
     v <- search tt [] []
-    case v of
-        N i -> return (Const (p,NatTy) (CNat i))
-        Cls (ClsLam e nm1 ty1 t) -> failFD4 $ "TODO" -- Lam (p,ty) nm1 ty1
-        Cls (ClsFix e nm1 ty1 nm2 ty2 t) -> failFD4 $ "TODO"
-runCEK _ _ _ _ = failFD4 $ "Error de ejecución: estado inicial incorrecto"
--- TODO: Ty?
+    return (val2TTerm v)
 
 search :: MonadFD4 m => TTerm -> Env -> Kont -> m Val
 search (Print _ s t) e k = search t e ((FrmPrint s):k)
@@ -48,17 +44,13 @@ search (V _ (Global n)) e k = do
     case mt of
         Just t -> search t e k -- ok?
         Nothing -> failFD4 $ "Error de ejecución: variable no declarada: " ++ ppName n -- idem Eval
--- por qué así da error de tipo? dice que t es Maybe TTerm
--- search (V _ (Global n)) e k = case lookupDecl n of
---                                 Just t -> search t e k -- esta ok?
---                                 Nothing -> failFD4 ("Variable Global " ++ n ++ " no encontrada")
 search (Const _ (CNat n)) e k = destroy (N n) k
 search (Lam _ nm ty (Sc1 t)) e k = destroy (Cls (ClsLam e nm ty t)) k
 search (Fix _ nm1 ty1 nm2 ty2 (Sc2 t)) e k = destroy (Cls (ClsFix e nm1 ty1 nm2 ty2 t)) k
 search (Let _ nm ty u (Sc1 t)) e k = search u e ((FrmLet e nm t):k)
 
 destroy :: MonadFD4 m => Val -> Kont -> m Val
-destroy v [] = return v -- return :: Monad m => a -> m a
+destroy v [] = return v
 destroy (N i) ((FrmPrint s):k) = do printFD4 (s++show i)
                                     destroy (N i) k
 destroy (Cls _) ((FrmPrint s):k) = failFD4 $ "Error de tipo en runtime! : Print"
@@ -71,3 +63,9 @@ destroy (Cls c) ((FrmApp e t):k) = search t e ((FrmCls c):k)
 destroy v ((FrmCls (ClsLam e nm ty t)):k) = search t (v:e) k
 destroy v ((FrmCls (ClsFix e nm1 ty1 nm2 ty2 t)):k) = search t ((Cls (ClsFix e nm1 ty1 nm2 ty2 t)):v:e) k
 destroy v ((FrmLet e nm t):k) = search t (v:e) k
+
+val2TTerm :: Val -> TTerm
+val2TTerm (N i) = Const (NoPos,NatTy) (CNat i)
+val2TTerm (Cls (ClsLam e nm ty t)) = substN (map val2TTerm e) (Lam (NoPos, FunTy ty (getTy t)) nm ty (Sc1 t))
+-- val2TTerm (Cls (ClsFix e nm1 ty1 nm2 ty2 t)) = let newtt = substN (map val2TTerm e) t in 
+-- Fix (NoPos, FunTy (FunTy ty1 (getTy newtt)) ty2) nm1 ty1 nm2 ty2 (Sc2 newtt)

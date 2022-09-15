@@ -140,7 +140,7 @@ handleDecl d = do
               addDecl (Decl p x te)
           InteractiveCEK -> do -- TODO
               (Decl p x tt) <- typecheckDecl d
-              te <- runCEK p tt [] []
+              te <- runCEK tt
               addDecl (Decl p x te)
           Typecheck -> do
               f <- getLastFile
