@@ -9,6 +9,7 @@ module CEK where
 
 import MonadFD4 ( MonadFD4, failFD4, lookupDecl, printFD4 )
 import Lang
+import Common ( Pos )
 import Eval ( semOp )
 import PPrint ( ppName)
 
@@ -24,6 +25,16 @@ data Frame =
     | FrmPrint String -- print str □
     | FrmLet Env Name TTerm -- ρ · let x = □ in t
 type Kont = [Frame]
+
+runCEK :: MonadFD4 m => Pos -> TTerm -> Env -> Kont -> m TTerm
+runCEK p tt [] [] = do
+    v <- search tt [] []
+    case v of
+        N i -> return (Const (p,NatTy) (CNat i))
+        Cls (ClsLam e nm1 ty1 t) -> failFD4 $ "TODO" -- Lam (p,ty) nm1 ty1
+        Cls (ClsFix e nm1 ty1 nm2 ty2 t) -> failFD4 $ "TODO"
+runCEK _ _ _ _ = failFD4 $ "Error de ejecución: estado inicial incorrecto"
+-- TODO: Ty?
 
 search :: MonadFD4 m => TTerm -> Env -> Kont -> m Val
 search (Print _ s t) e k = search t e ((FrmPrint s):k)
