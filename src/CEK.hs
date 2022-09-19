@@ -16,7 +16,7 @@ import Subst ( substN )
 
 data Val = N Int | Cls Closure
 type Env = [Val]
-data Closure = ClsLam Env Name Ty TTerm | ClsFix Env Name Ty Name Ty TTerm
+data Closure = ClsLam (Pos,Ty) Env Name Ty TTerm | ClsFix (Pos,Ty) Env Name Ty Name Ty TTerm
 data Frame =
     FrmApp Env TTerm -- ρ · □ t
     | FrmCls Closure -- clos □
@@ -45,9 +45,9 @@ search (V _ (Global n)) e k = do
         Just t -> search t e k -- ok?
         Nothing -> failFD4 $ "Error de ejecución: variable no declarada: " ++ ppName n -- idem Eval
 search (Const _ (CNat n)) e k = destroy (N n) k
-search (Lam _ nm ty (Sc1 t)) e k = destroy (Cls (ClsLam e nm ty t)) k
-search (Fix _ nm1 ty1 nm2 ty2 (Sc2 t)) e k = destroy (Cls (ClsFix e nm1 ty1 nm2 ty2 t)) k
-search (Let _ nm ty u (Sc1 t)) e k = search u e ((FrmLet e nm t):k)
+search (Lam i nm ty (Sc1 t)) e k = destroy (Cls (ClsLam i e nm ty t)) k
+search (Fix i nm1 ty1 nm2 ty2 (Sc2 t)) e k = destroy (Cls (ClsFix i e nm1 ty1 nm2 ty2 t)) k
+search (Let _ nm ty u (Sc1 t)) e k = search u e (FrmLet e nm t:k)
 
 destroy :: MonadFD4 m => Val -> Kont -> m Val
 destroy v [] = return v
@@ -61,7 +61,7 @@ destroy (N 0) ((FrmIfZ e tt te):k) = search tt e k
 destroy (N _) ((FrmIfZ e tt te):k) = search te e k
 destroy (Cls c) ((FrmApp e t):k) = search t e ((FrmCls c):k)
 destroy v ((FrmCls (ClsLam e nm ty t)):k) = search t (v:e) k
-destroy v ((FrmCls (ClsFix e nm1 ty1 nm2 ty2 t)):k) = search t ((Cls (ClsFix e nm1 ty1 nm2 ty2 t)):v:e) k
+destroy v ((FrmCls (ClsFix i e nm1 ty1 nm2 ty2 t)):k) = search t (Cls (ClsFix i e nm1 ty1 nm2 ty2 t):v:e) k
 destroy v ((FrmLet e nm t):k) = search t (v:e) k
 
 val2TTerm :: Val -> TTerm
