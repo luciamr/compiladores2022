@@ -60,7 +60,7 @@ destroy (N _) ((FrmBOpV o (Cls _)):k) =  failFD4 $ "Error de tipo en runtime! : 
 destroy (N 0) ((FrmIfZ e tt te):k) = search tt e k
 destroy (N _) ((FrmIfZ e tt te):k) = search te e k
 destroy (Cls c) ((FrmApp e t):k) = search t e ((FrmCls c):k)
-destroy v ((FrmCls (ClsLam e nm ty t)):k) = search t (v:e) k
+destroy v ((FrmCls (ClsLam _ e nm ty t)):k) = search t (v:e) k
 destroy v ((FrmCls (ClsFix i e nm1 ty1 nm2 ty2 t)):k) = search t (Cls (ClsFix i e nm1 ty1 nm2 ty2 t):v:e) k
 destroy v ((FrmLet e nm t):k) = search t (v:e) k
 
