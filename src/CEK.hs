@@ -66,6 +66,5 @@ destroy v ((FrmLet e nm t):k) = search t (v:e) k
 
 val2TTerm :: Val -> TTerm
 val2TTerm (N i) = Const (NoPos,NatTy) (CNat i)
-val2TTerm (Cls (ClsLam e nm ty t)) = substN (map val2TTerm e) (Lam (NoPos, FunTy ty (getTy t)) nm ty (Sc1 t))
--- val2TTerm (Cls (ClsFix e nm1 ty1 nm2 ty2 t)) = let newtt = substN (map val2TTerm e) t in 
--- Fix (NoPos, FunTy (FunTy ty1 (getTy newtt)) ty2) nm1 ty1 nm2 ty2 (Sc2 newtt)
+val2TTerm (Cls (ClsLam i e nm ty t)) = substN (map val2TTerm e) (Lam i nm ty (Sc1 t))
+val2TTerm (Cls (ClsFix i e nm1 ty1 nm2 ty2 t)) = substN (map val2TTerm e) (Fix i nm1 ty1 nm2 ty2 (Sc2 t))
