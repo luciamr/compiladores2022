@@ -51,10 +51,10 @@ destroy :: MonadFD4 m => Val -> Kont -> m Val
 destroy v [] = return v
 destroy (N i) ((FrmPrint s):k) = do printFD4 (s++show i)
                                     destroy (N i) k
-destroy (Cls _) ((FrmPrint s):k) = failFD4 $ "Error de tipo en runtime! : Print"
+destroy (Cls _) ((FrmPrint s):k) = failFD4 "Error de tipo en runtime! : Print"
 destroy (N i) ((FrmBOpT e o t):k) = search t e (FrmBOpV o (N i):k)
 destroy (N i1) ((FrmBOpV o (N i2)):k) =  destroy (N (semOp o i1 i2)) k
-destroy (N _) ((FrmBOpV o (Cls _)):k) =  failFD4 $ "Error de tipo en runtime! : BinaryOp" -- TODO: pprint del operador
+destroy (N _) ((FrmBOpV o (Cls _)):k) =  failFD4 "Error de tipo en runtime! : BinaryOp" -- TODO: pprint del operador
 destroy (N 0) ((FrmIfZ e tt te):k) = search tt e k
 destroy (N _) ((FrmIfZ e tt te):k) = search te e k
 destroy (Cls c) ((FrmApp e t):k) = search t e (FrmCls c:k)
