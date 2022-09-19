@@ -33,10 +33,8 @@ runCEK tt = do
     return (val2TTerm v)
 
 search :: MonadFD4 m => TTerm -> Env -> Kont -> m Val
-search (Print _ s t) e k = search t e ((FrmPrint s):k)
-search (BinaryOp _ o t u) e k = search t e ((FrmBOpT e o u):k)
-search (IfZ _ tc tt te) e k = search tc e ((FrmIfZ e tt te):k)
-search (App _ t u) e k = search t e ((FrmApp e u):k)
+search (Print _ s t) e k = search t e (FrmPrint s:k)
+search (BinaryOp _ o t u) e k = search t e (FrmBOpT e o u:k)
 search (V _ (Bound i)) e k = destroy (e!!i) k
 search (V _ (Free n)) _ _ = failFD4 $ "Error de ejecución: variable libre detectada: " ++ ppName n
 search (V _ (Global n)) e k = do
@@ -54,12 +52,12 @@ destroy v [] = return v
 destroy (N i) ((FrmPrint s):k) = do printFD4 (s++show i)
                                     destroy (N i) k
 destroy (Cls _) ((FrmPrint s):k) = failFD4 $ "Error de tipo en runtime! : Print"
-destroy (N i) ((FrmBOpT e o t):k) = search t e ((FrmBOpV o (N i)):k)
+destroy (N i) ((FrmBOpT e o t):k) = search t e (FrmBOpV o (N i):k)
 destroy (N i1) ((FrmBOpV o (N i2)):k) =  destroy (N (semOp o i1 i2)) k
 destroy (N _) ((FrmBOpV o (Cls _)):k) =  failFD4 $ "Error de tipo en runtime! : BinaryOp" -- TODO: pprint del operador
 destroy (N 0) ((FrmIfZ e tt te):k) = search tt e k
 destroy (N _) ((FrmIfZ e tt te):k) = search te e k
-destroy (Cls c) ((FrmApp e t):k) = search t e ((FrmCls c):k)
+destroy (Cls c) ((FrmApp e t):k) = search t e (FrmCls c:k)
 destroy v ((FrmCls (ClsLam _ e nm ty t)):k) = search t (v:e) k
 destroy v ((FrmCls (ClsFix i e nm1 ty1 nm2 ty2 t)):k) = search t (Cls (ClsFix i e nm1 ty1 nm2 ty2 t):v:e) k
 destroy v ((FrmLet e nm t):k) = search t (v:e) k
