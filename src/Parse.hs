@@ -35,15 +35,15 @@ lexer = Tok.makeTokenParser langDef
 langDef :: LanguageDef u
 langDef = emptyDef {
          commentLine    = "#",
-         reservedNames = ["let", "rec","fun", "fix", "then", "else","in",
-                           "ifz", "print","Nat","type"],
+         reservedNames = ["let","rec","fun","fix","then","else","in",
+                           "ifz","print","Nat","type"],
          reservedOpNames = ["->",":","=","+","-"]
         }
 
 whiteSpace :: P ()
 whiteSpace = Tok.whiteSpace lexer
 
-natural :: P Integer 
+natural :: P Integer
 natural = Tok.natural lexer
 
 stringLiteral :: P String
@@ -81,18 +81,18 @@ getPos :: P Pos
 getPos = do pos <- getPosition
             return $ Pos (sourceLine pos) (sourceColumn pos)
 
-tyatom :: P Ty
-tyatom = (reserved "Nat" >> return NatTy)
+tyatom :: P STy
+tyatom = (reserved "Nat" >> return NatSTy)
          <|> parens typeP
 
-typeP :: P Ty
-typeP = try (do 
+typeP :: P STy
+typeP = try (do
           x <- tyatom
           reservedOp "->"
           y <- typeP
-          return (FunTy x y))
+          return (FunSTy x y))
       <|> tyatom
-          
+
 const :: P Const
 const = CNat <$> num
 
@@ -115,13 +115,13 @@ expr :: P STerm
 expr = Ex.buildExpressionParser table tm
 
 atom :: P STerm
-atom =     (flip SConst <$> const <*> getPos)
+atom =  flip SConst <$> const <*> getPos
        <|> flip SV <$> var <*> getPos
        <|> parens expr
        <|> printOp
 
 -- parsea un par (variable : tipo)
-binding :: P (Name, Ty)
+binding :: P (Name, STy)
 binding = do v <- var
              reservedOp ":"
              ty <- typeP
