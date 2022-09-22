@@ -184,22 +184,36 @@ tm :: P STerm
 tm = app <|> lam <|> ifz <|> printOp <|> fix <|> letexp
 
 -- | Parser de declaraciones
-decl :: P (Decl STerm)
-decl = do 
-     i <- getPos
-     reserved "let"
-     v <- var
-     reservedOp "="
-     t <- expr
-     return (Decl i v t)
+decl :: P (SDecl STerm)
+decl = declLet <|> declTy
 
--- | Parser de programas (listas de declaraciones) 
-program :: P [Decl STerm]
+declLet :: P (SDecl STerm)
+declLet = do
+  i <- getPos
+  reserved "let"
+  isrec <- try (reserved "rec" >> return True) <|> return False
+  binds <- binders
+  reservedOp "="
+  b <- expr
+  notFollowedBy (reserved "in")
+  return (LetDecl i isrec binds b)
+
+declTy :: P (SDecl STerm)
+declTy = do
+  i <- getPos
+  reserved "type"
+  n <- var
+  reservedOp "="
+  ty <- typeP
+  return (TyDecl i n ty)
+
+-- | Parser de programas (listas de declaraciones)
+program :: P [SDecl STerm]
 program = many decl
 
 -- | Parsea una declaración a un término
 -- Útil para las sesiones interactivas
-declOrTm :: P (Either (Decl STerm) STerm)
+declOrTm :: P (Either (SDecl STerm) STerm)
 declOrTm =  try (Left <$> decl) <|> (Right <$> expr)
 
 -- Corre un parser, chequeando que se pueda consumir toda la entrada
