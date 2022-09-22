@@ -100,7 +100,22 @@ showBC :: Bytecode -> String
 showBC = intercalate "; " . showOps
 
 bcc :: MonadFD4 m => TTerm -> m Bytecode
+bcc Const _ n = [CONST, n]
+bcc BinaryOp _ op t1 t2 = 
 bcc t = failFD4 "implementame!"
+
+-- data Tm info var =
+--     V info var
+--   | Lam info Name Ty (Scope info var)
+--   | App info (Tm info var) (Tm info var)
+--   | Print info String (Tm info var)
+--   | Fix info Name Ty Name Ty (Scope2 info var)
+--   | IfZ info (Tm info var) (Tm info var) (Tm info var)
+--   | Let info Name Ty (Tm info var)  (Scope info var)
+--   deriving (Show, Functor)
+-- type Term = Tm Pos Var       -- ^ 'Tm' con índices de De Bruijn como variables ligadas, y nombres para libres y globales, guarda posición
+-- type TTerm = Tm (Pos,Ty) Var -- ^ 'Tm' con índices de De Bruijn como variables ligadas, y nombres para libres y globales, guarda posición y tipo
+
 
 -- ord/chr devuelven los codepoints unicode, o en otras palabras
 -- la codificación UTF-32 del caracter.
