@@ -37,9 +37,16 @@ data STm info ty var =
   deriving (Show, Functor)
 
 -- | AST de Tipos
+-- Ty guarda el nombre original del tipo en caso que corresponda
 data Ty =
-      NatTy
-    | FunTy Ty Ty
+      NatTy (Maybe Name)
+    | FunTy (Maybe Name) Ty Ty
+    deriving (Show,Eq)
+
+data STy =
+      NatSTy
+    | FunSTy STy STy
+    | SynSTy Name -- sinonimo de tipo
     deriving (Show,Eq)
 
 type Name = String
@@ -56,14 +63,30 @@ data BinaryOp = Add | Sub
 data Decl a = Decl
   { declPos  :: Pos
   , declName :: Name
+  , declType :: Ty
   , declBody :: a
   }
   deriving (Show, Functor)
 
--- | AST de los términos. 
---   - info es información extra que puede llevar cada nodo. 
+-- | tipo de datos de declaraciones superficiales, let y sinonimos de tipo
+data SDecl a =
+    LetDecl
+  { sdeclPos  :: Pos
+  , sdeclRec :: Bool
+  , sdeclBinds :: [(Name, STy)]
+  , sdeclBody :: a
+  }
+  | TyDecl
+  { sdeclPos  :: Pos
+  , sdeclName :: Name
+  , sdeclType :: STy
+  }
+  deriving (Show, Functor)
+
+-- | AST de los términos.
+--   - info es información extra que puede llevar cada nodo.
 --       Por ahora solo la usamos para guardar posiciones en el código fuente.
---   - var es el tipo de la variables. Es 'Name' para fully named y 'Var' para locally closed. 
+--   - var es el tipo de la variables. Es 'Name' para fully named y 'Var' para locally closed.
 data Tm info var =
     V info var
   | Const info Const
