@@ -25,9 +25,9 @@ import Data.Binary ( Word32, Binary(put, get), decode, encode )
 import Data.Binary.Put ( putWord32le )
 import Data.Binary.Get ( getWord32le, isEmpty )
 
-import Data.List (intercalate)
+import Data.List ( intercalate, elemIndex )
 import Data.Char
-import TypeChecker (tc)
+import TypeChecker ( tc )
 
 type Opcode = Int
 type Bytecode = [Int]
@@ -123,7 +123,8 @@ bcc (Lam _ _ _ (Sc1 t)) = do
   return ([FUNCTION, length t'] ++ t' ++ [RETURN])
 bcc (Fix _ nm1 _ nm2 _ (Sc2 t)) = do
   t' <- bcc t
-  return ([FUNCTION, length t'] ++ t' ++ [FIX])
+  return ([FUNCTION, length t'] ++ t' ++ [RETURN, FIX])
+  -- return ([FIXPOINT, length t'] ++ t' ++ [RETURN])
 bcc (IfZ _ c t f) = do
   c' <- bcc c
   t' <- bcc t
@@ -132,15 +133,12 @@ bcc (IfZ _ c t f) = do
 bcc (Print _ s t) = do
   t' <- bcc t
   let s' = string2bc s in
-    return ([PRINT, length s'] ++ s' ++ t' ++ [PRINTN])
+    return ([PRINT] ++ s' ++ [NULL] ++ t' ++ [PRINTN])
 bcc (Let _ nm _ t1  (Sc1 t2)) = do
   t1' <- bcc t1
   t2' <- bcc t2
   return (t1' ++ [SHIFT] ++ t2' ++ [DROP])
 bcc t = failFD4 "implementame!"
-
-
-
 
 -- ord/chr devuelven los codepoints unicode, o en otras palabras
 -- la codificación UTF-32 del caracter.
@@ -174,13 +172,28 @@ runBC' (ACCESS:i:bc) e s = runBC' bc e ((e!!i):s)
 runBC' (ADD:bc) e ((I n1):(I n2):s) = runBC' bc e (I (n1+n2):s)
 runBC' (SUB:bc) e ((I n1):(I n2):s) = runBC' bc e (I (n1-n2):s)
 runBC' (CALL:bc) e (v:(Fun ef bcf):s) = runBC' bcf (v:ef) (RA e bc:s)
-runBC' (RETURN:_) _ (v:(RA e bc):s) = runBC' bc e (v:s)
--- runBC' (FUNCTION:bc) e s = runBC' bc e (Fun e bcf:s)
-runBC' (PRINT:l:bc) e s = do
-    printFD4 (bc2string (take l bc))
-    runBC' (drop l bc) e s
+-- runBC' (FUNCTION:l:bc) e s =
+--   let  rf = runBC' (take l bc) e s
+--   in
+--     runBC' (drop l bc) e (Fun e rf:s)
+-- runBC' (FIX:bc)
+-- runBC' (RETURN:_) _ (v:(RA e bc):s) = runBC' bc e (v:s)
+-- runBC' (FIXPOINT:l:bc) e s =
+--   let cf = runBC' (take l bc) e s
+--       efix = (Fun efix cf):e
+--   in
+--     runBC' (drop l bc) e ((Fun efix cf):s)
+-- runBC' (PRINT:bc) e s = do
+--     mi <- elemIndex NULL bc
+--     case mi of
+--       Nothing -> failFD4 "falta NULL despues de PRINT"
+      -- Just i -> do
+      --   printFD4 (bc2string (take i bc))
+      --   runBC' (drop (i+1) bc) e s
 runBC' (PRINTN:bc) e (I n:s) = do
     printFD4 $ show n
-    runBC' bc e s
-runBC' [] _ (n:s)  = failFD4  "ver final"
+    runBC' bc e (I n:s)
+runBC' (SHIFT:bc) e (v:s) = runBC' bc (v:e) s
+runBC' (DROP:bc) (v:e) s = runBC' bc e s
+runBC' [] _ s  = failFD4  "definir final"
 
