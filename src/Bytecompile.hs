@@ -1,5 +1,6 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-|
 Module      : Bytecompile
 Description : Compila a bytecode. Ejecuta bytecode.
@@ -26,9 +27,14 @@ import Data.Binary.Get ( getWord32le, isEmpty )
 
 import Data.List (intercalate)
 import Data.Char
+import TypeChecker (tc)
 
 type Opcode = Int
 type Bytecode = [Int]
+
+data Val = I Int | Fun Env Bytecode | RA Env Bytecode
+type Env = [Val]
+type Stack = Env
 
 newtype Bytecode32 = BC { un32 :: [Word32] }
 
@@ -100,21 +106,40 @@ showBC :: Bytecode -> String
 showBC = intercalate "; " . showOps
 
 bcc :: MonadFD4 m => TTerm -> m Bytecode
-bcc Const _ n = [CONST, n]
-bcc BinaryOp _ op t1 t2 = 
+bcc (Const _ (CNat n)) = return [CONST, n]
+bcc (V _ (Bound i)) = return [ACCESS, i]
+bcc (BinaryOp _ op t1 t2) = do
+  t1' <- bcc t1
+  t2' <- bcc t2
+  case op of
+    Add -> return (t1' ++ t2' ++ [ADD])
+    Sub -> return (t1' ++ t2' ++ [SUB])
+bcc (App _ f t) = do
+  f' <- bcc f
+  t' <- bcc t
+  return (f' ++ t' ++ [CALL])
+bcc (Lam _ _ _ (Sc1 t)) = do
+  t' <- bcc t
+  return ([FUNCTION, length t'] ++ t' ++ [RETURN])
+bcc (Fix _ nm1 _ nm2 _ (Sc2 t)) = do
+  t' <- bcc t
+  return ([FUNCTION, length t'] ++ t' ++ [FIX])
+bcc (IfZ _ c t f) = do
+  c' <- bcc c
+  t' <- bcc t
+  f' <- bcc f
+  failFD4 "implementar ifz!"
+bcc (Print _ s t) = do
+  t' <- bcc t
+  let s' = string2bc s in
+    return ([PRINT, length s'] ++ s' ++ t' ++ [PRINTN])
+bcc (Let _ nm _ t1  (Sc1 t2)) = do
+  t1' <- bcc t1
+  t2' <- bcc t2
+  return (t1' ++ [SHIFT] ++ t2' ++ [DROP])
 bcc t = failFD4 "implementame!"
 
--- data Tm info var =
---     V info var
---   | Lam info Name Ty (Scope info var)
---   | App info (Tm info var) (Tm info var)
---   | Print info String (Tm info var)
---   | Fix info Name Ty Name Ty (Scope2 info var)
---   | IfZ info (Tm info var) (Tm info var) (Tm info var)
---   | Let info Name Ty (Tm info var)  (Scope info var)
---   deriving (Show, Functor)
--- type Term = Tm Pos Var       -- ^ 'Tm' con índices de De Bruijn como variables ligadas, y nombres para libres y globales, guarda posición
--- type TTerm = Tm (Pos,Ty) Var -- ^ 'Tm' con índices de De Bruijn como variables ligadas, y nombres para libres y globales, guarda posición y tipo
+
 
 
 -- ord/chr devuelven los codepoints unicode, o en otras palabras
@@ -141,4 +166,21 @@ bcRead :: FilePath -> IO Bytecode
 bcRead filename = (map fromIntegral <$> un32) . decode <$> BS.readFile filename
 
 runBC :: MonadFD4 m => Bytecode -> m ()
-runBC bc = failFD4 "implementame!"
+runBC bc = runBC' bc [] []
+
+runBC' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
+runBC' (CONST:n:bc) e s = runBC' bc e (I n:s)
+runBC' (ACCESS:i:bc) e s = runBC' bc e ((e!!i):s)
+runBC' (ADD:bc) e ((I n1):(I n2):s) = runBC' bc e (I (n1+n2):s)
+runBC' (SUB:bc) e ((I n1):(I n2):s) = runBC' bc e (I (n1-n2):s)
+runBC' (CALL:bc) e (v:(Fun ef bcf):s) = runBC' bcf (v:ef) (RA e bc:s)
+runBC' (RETURN:_) _ (v:(RA e bc):s) = runBC' bc e (v:s)
+-- runBC' (FUNCTION:bc) e s = runBC' bc e (Fun e bcf:s)
+runBC' (PRINT:l:bc) e s = do
+    printFD4 (bc2string (take l bc))
+    runBC' (drop l bc) e s
+runBC' (PRINTN:bc) e (I n:s) = do
+    printFD4 $ show n
+    runBC' bc e s
+runBC' [] _ (n:s)  = failFD4  "ver final"
+
