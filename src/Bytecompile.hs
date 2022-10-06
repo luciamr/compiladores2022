@@ -28,6 +28,7 @@ import Data.Binary.Get ( getWord32le, isEmpty )
 import Data.List ( intercalate, elemIndex )
 import Data.Char
 import TypeChecker ( tc )
+import Lang (TTerm)
 
 type Opcode = Int
 type Bytecode = [Int]
@@ -79,6 +80,7 @@ pattern DROP     = 12
 pattern PRINT    = 13
 pattern PRINTN   = 14
 pattern JUMP     = 15
+pattern CJUMP    = 16
 
 --función util para debugging: muestra el Bytecode de forma más legible.
 showOps :: Bytecode -> [String]
@@ -124,12 +126,11 @@ bcc (Lam _ _ _ (Sc1 t)) = do
 bcc (Fix _ nm1 _ nm2 _ (Sc2 t)) = do
   t' <- bcc t
   return ([FUNCTION, length t'] ++ t' ++ [RETURN, FIX])
-  -- return ([FIXPOINT, length t'] ++ t' ++ [RETURN])
 bcc (IfZ _ c t f) = do
   c' <- bcc c
   t' <- bcc t
   f' <- bcc f
-  failFD4 "implementar ifz!"
+  return (c' ++ [CJUMP, length t'] ++ t' ++ f')
 bcc (Print _ s t) = do
   t' <- bcc t
   let s' = string2bc s in
@@ -138,7 +139,7 @@ bcc (Let _ nm _ t1  (Sc1 t2)) = do
   t1' <- bcc t1
   t2' <- bcc t2
   return (t1' ++ [SHIFT] ++ t2' ++ [DROP])
-bcc t = failFD4 "implementame!"
+bcc t = failFD4 "bcc: no deberia haber llegado a aqui"
 
 -- ord/chr devuelven los codepoints unicode, o en otras palabras
 -- la codificación UTF-32 del caracter.
@@ -149,7 +150,33 @@ bc2string :: Bytecode -> String
 bc2string = map chr
 
 bytecompileModule :: MonadFD4 m => Module -> m Bytecode
-bytecompileModule m = failFD4 "implementame!"
+bytecompileModule m = let m' = global2free m in bcc (processNestedLets m')
+
+-- transformar variables globales en free
+global2free :: Module -> Module -- [Decl TTerm]
+global2free xs = map (\ (Decl p n t) -> (Decl p n (global2free' t))) xs
+
+global2free' :: TTerm -> TTerm
+global2free' (V i (Global n)) = V i (Free n)
+global2free' (Lam i nm ty (Sc1 t)) = Lam i nm ty (Sc1 (global2free' t))
+global2free' (App i t1 t2) = App i (global2free' t1) (global2free' t2)
+global2free' (Print i s t) = Print i s (global2free' t)
+global2free' (BinaryOp i bo t1 t2) = BinaryOp i bo (global2free' t1) (global2free' t2)
+global2free' (Fix i nm1 ty1 nm2 ty2 (Sc2 t)) = Fix i nm1 ty1 nm2 ty2 (Sc2 (global2free' t))
+global2free' (IfZ i tc tt te) = IfZ i (global2free' tc) (global2free' tt) (global2free' te)
+global2free' (Let i nm ty u (Sc1 t)) = Let i nm ty (global2free' u) (Sc1 (global2free' t))
+global2free' t = t -- incluye V Bound, V Free and Const
+
+-- procesar let anidados
+processNestedLets :: Module -> TTerm
+processNestedLets (m:[]) = declBody m
+processNestedLets (m:ms) = let
+  p = declPos m
+  ty = NatTy -- TODO: corregir el tipo, ver Decl
+  nm = declName m
+  b = declBody m
+  in
+    Let (p, ty) nm ty b (close nm (processNestedLets ms))
 
 -- | Toma un bytecode, lo codifica y lo escribe un archivo
 bcWrite :: Bytecode -> FilePath -> IO ()
@@ -170,30 +197,29 @@ runBC' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
 runBC' (CONST:n:bc) e s = runBC' bc e (I n:s)
 runBC' (ACCESS:i:bc) e s = runBC' bc e ((e!!i):s)
 runBC' (ADD:bc) e ((I n1):(I n2):s) = runBC' bc e (I (n1+n2):s)
-runBC' (SUB:bc) e ((I n1):(I n2):s) = runBC' bc e (I (n1-n2):s)
+runBC' (SUB:bc) e ((I n1):(I n2):s) = runBC' bc e (I (n1-n2):s) -- da negativo? min 0
 runBC' (CALL:bc) e (v:(Fun ef bcf):s) = runBC' bcf (v:ef) (RA e bc:s)
--- runBC' (FUNCTION:l:bc) e s =
---   let  rf = runBC' (take l bc) e s
---   in
---     runBC' (drop l bc) e (Fun e rf:s)
--- runBC' (FIX:bc)
--- runBC' (RETURN:_) _ (v:(RA e bc):s) = runBC' bc e (v:s)
--- runBC' (FIXPOINT:l:bc) e s =
---   let cf = runBC' (take l bc) e s
---       efix = (Fun efix cf):e
---   in
---     runBC' (drop l bc) e ((Fun efix cf):s)
--- runBC' (PRINT:bc) e s = do
---     mi <- elemIndex NULL bc
---     case mi of
---       Nothing -> failFD4 "falta NULL despues de PRINT"
-      -- Just i -> do
-      --   printFD4 (bc2string (take i bc))
-      --   runBC' (drop (i+1) bc) e s
+runBC' (FUNCTION:l:bc) e s = runBC' (drop l bc) e (Fun e (take l bc):s)
+runBC' (RETURN:_) _ (v:(RA e bc):s) = runBC' bc e (v:s)
+runBC' (FIX:bc) e ((Fun ef bcf):s) =
+  let efix = Fun efix bcf:ef in
+    runBC' bc e (Fun efix bcf:s)
+runBC' (PRINT:bc) e s = do
+  let mi = elemIndex NULL bc in
+    case mi of
+      Nothing -> failFD4 "falta NULL despues de PRINT"
+      Just i -> do
+        printFD4 (bc2string (take i bc))
+        runBC' (drop (i+1) bc) e s
 runBC' (PRINTN:bc) e (I n:s) = do
     printFD4 $ show n
     runBC' bc e (I n:s)
 runBC' (SHIFT:bc) e (v:s) = runBC' bc (v:e) s
 runBC' (DROP:bc) (v:e) s = runBC' bc e s
-runBC' [] _ s  = failFD4  "definir final"
+runBC' (CJUMP:l:bc) e (I n:s) =
+  case n of
+    0 -> runBC' bc e s
+    _ -> runBC' (drop l bc) e s
+runBC' (STOP:_) _ _ = return ()
+runBC' [] _ _  = failFD4  "runBC': no deberia haber llegado a aqui"
 
