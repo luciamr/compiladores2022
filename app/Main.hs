@@ -34,7 +34,7 @@ import Parse ( P, tm, program, declOrTm, runP )
 import Elab ( elab, elabDecl )
 import Eval ( eval )
 import CEK ( runCEK )
-import Bytecompile ( bytecompileModule, bcWrite, runBC )
+import Bytecompile ( bcWrite, bcRead, showBC, bytecompileModule, runBC )
 import PPrint ( pp , ppTy, ppDecl )
 import MonadFD4
 import TypeChecker ( tc, tcDecl )
@@ -132,10 +132,13 @@ compileFile f = do
       decls_sterm <- loadFile f
       let decls_term = map elabDecl decls_sterm in
         do
-          decls_tterm <- mapM tcDecl decls_term
+          decls_tterm <- mapM (tcDecl >=> \d -> addDecl d >> return d) decls_term
           bc <- bytecompileModule decls_tterm
           liftIO $ bcWrite bc (replaceExtension f "bc")
---    RunMV -> do
+          printFD4 $ showBC bc
+    RunVM -> do
+      bc <- liftIO $ bcRead f
+      runBC bc
     _ -> do
       printFD4 ("Abriendo "++f++"...")
       decls <- loadFile f -- m [Decl STerm]

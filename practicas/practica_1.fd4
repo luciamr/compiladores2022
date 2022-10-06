@@ -1,3 +1,12 @@
+let x = print "x = " 1
+let y = print "y = " (x + x)
+let z = print "z = " (x + y)
+
+let succ =
+	fun(x : Nat) ->
+		x + 1
+
+
 let resta =
 	fun(x : Nat) ->
 		fun(y : Nat) ->

@@ -150,7 +150,9 @@ bc2string :: Bytecode -> String
 bc2string = map chr
 
 bytecompileModule :: MonadFD4 m => Module -> m Bytecode
-bytecompileModule m = let m' = global2free m in bcc (processNestedLets m')
+bytecompileModule m = let m' = global2free m in do
+  bc <- bcc (processNestedLets m')
+  return (bc ++ [STOP])
 
 -- transformar variables globales en free
 global2free :: Module -> Module -- [Decl TTerm]
@@ -191,35 +193,47 @@ bcRead :: FilePath -> IO Bytecode
 bcRead filename = (map fromIntegral <$> un32) . decode <$> BS.readFile filename
 
 runBC :: MonadFD4 m => Bytecode -> m ()
-runBC bc = runBC' bc [] []
+runBC bc = runBC'' bc [] []
+
+val2string :: Val -> String
+val2string (I n) = "I " ++ (show n)
+val2string (Fun e bc) = "Fun " ++ (intercalate "," (map val2string e)) ++ (showBC bc)
+val2string (RA e bc) = "RA " ++ (intercalate "," (map val2string e)) ++ (showBC bc)
+
+runBC'' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
+runBC'' bc e s = do
+  printFD4 $ showBC bc
+  printFD4 $ intercalate "," (map val2string e)
+  printFD4 $ intercalate "," (map val2string s)
+  runBC' bc e s
 
 runBC' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
-runBC' (CONST:n:bc) e s = runBC' bc e (I n:s)
-runBC' (ACCESS:i:bc) e s = runBC' bc e ((e!!i):s)
-runBC' (ADD:bc) e ((I n1):(I n2):s) = runBC' bc e (I (n1+n2):s)
-runBC' (SUB:bc) e ((I n1):(I n2):s) = runBC' bc e (I (n1-n2):s) -- da negativo? min 0
-runBC' (CALL:bc) e (v:(Fun ef bcf):s) = runBC' bcf (v:ef) (RA e bc:s)
-runBC' (FUNCTION:l:bc) e s = runBC' (drop l bc) e (Fun e (take l bc):s)
-runBC' (RETURN:_) _ (v:(RA e bc):s) = runBC' bc e (v:s)
+runBC' (CONST:n:bc) e s = runBC'' bc e (I n:s)
+runBC' (ACCESS:i:bc) e s = runBC'' bc e ((e!!i):s)
+runBC' (ADD:bc) e ((I n1):(I n2):s) = runBC'' bc e (I (n1+n2):s)
+runBC' (SUB:bc) e ((I n1):(I n2):s) = runBC'' bc e (I (n1-n2):s) -- da negativo? min 0
+runBC' (CALL:bc) e (v:(Fun ef bcf):s) = runBC'' bcf (v:ef) (RA e bc:s)
+runBC' (FUNCTION:l:bc) e s = runBC'' (drop l bc) e (Fun e (take l bc):s)
+runBC' (RETURN:_) _ (v:(RA e bc):s) = runBC'' bc e (v:s)
 runBC' (FIX:bc) e ((Fun ef bcf):s) =
   let efix = Fun efix bcf:ef in
-    runBC' bc e (Fun efix bcf:s)
+    runBC'' bc e (Fun efix bcf:s)
 runBC' (PRINT:bc) e s = do
   let mi = elemIndex NULL bc in
     case mi of
       Nothing -> failFD4 "falta NULL despues de PRINT"
       Just i -> do
         printFD4 (bc2string (take i bc))
-        runBC' (drop (i+1) bc) e s
+        runBC'' (drop (i+1) bc) e s
 runBC' (PRINTN:bc) e (I n:s) = do
     printFD4 $ show n
-    runBC' bc e (I n:s)
-runBC' (SHIFT:bc) e (v:s) = runBC' bc (v:e) s
-runBC' (DROP:bc) (v:e) s = runBC' bc e s
+    runBC'' bc e (I n:s)
+runBC' (SHIFT:bc) e (v:s) = runBC'' bc (v:e) s
+runBC' (DROP:bc) (v:e) s = runBC'' bc e s
 runBC' (CJUMP:l:bc) e (I n:s) =
   case n of
-    0 -> runBC' bc e s
-    _ -> runBC' (drop l bc) e s
+    0 -> runBC'' bc e s
+    _ -> runBC'' (drop l bc) e s
 runBC' (STOP:_) _ _ = return ()
 runBC' [] _ _  = failFD4  "runBC': no deberia haber llegado a aqui"
 
