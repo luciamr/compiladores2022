@@ -1,0 +1,5 @@
+let succ =
+	fun(x : Nat) ->
+		x + 1
+
+let a = print "succ 2 = " (succ 2)
