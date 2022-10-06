@@ -21,6 +21,7 @@ import Data.List (nub, isPrefixOf, intercalate )
 import Data.Char ( isSpace )
 import Control.Exception ( catch , IOException )
 import System.IO ( hPrint, stderr, hPutStrLn )
+import System.FilePath ( replaceExtension )
 import Data.Maybe ( fromMaybe )
 
 import System.Exit ( exitWith, ExitCode(ExitFailure) )
@@ -30,9 +31,10 @@ import Global
 import Errors
 import Lang
 import Parse ( P, tm, program, declOrTm, runP )
-import Elab ( elab )
+import Elab ( elab, elabDecl )
 import Eval ( eval )
 import CEK ( runCEK )
+import Bytecompile ( bytecompileModule, bcWrite, runBC )
 import PPrint ( pp , ppTy, ppDecl )
 import MonadFD4
 import TypeChecker ( tc, tcDecl )
@@ -47,8 +49,8 @@ parseMode :: Parser (Mode,Bool)
 parseMode = (,) <$>
       (flag' Typecheck ( long "typecheck" <> short 't' <> help "Chequear tipos e imprimir el término")
       <|> flag' InteractiveCEK (long "interactiveCEK" <> short 'k' <> help "Ejecutar interactivamente en la CEK")
-  -- <|> flag' Bytecompile (long "bytecompile" <> short 'm' <> help "Compilar a la BVM")
-  -- <|> flag' RunVM (long "runVM" <> short 'r' <> help "Ejecutar bytecode en la BVM")
+      <|> flag' Bytecompile (long "bytecompile" <> short 'm' <> help "Compilar a la BVM")
+      <|> flag' RunVM (long "runVM" <> short 'r' <> help "Ejecutar bytecode en la BVM")
       <|> flag Interactive Interactive ( long "interactive" <> short 'i' <> help "Ejecutar en forma interactiva")
   -- <|> flag' CC ( long "cc" <> short 'c' <> help "Compilar a código C")
   -- <|> flag' Canon ( long "canon" <> short 'n' <> help "Imprimir canonicalización")
@@ -74,8 +76,12 @@ main = execParser opts >>= go
     go :: (Mode,Bool,[FilePath]) -> IO ()
     go (Interactive,opt,files) =
               runOrFail (Conf opt Interactive) (runInputT defaultSettings (repl files))
-    go (InteractiveCEK,opt,files) = -- TODO
+    go (InteractiveCEK,opt,files) =
               runOrFail (Conf opt InteractiveCEK) (runInputT defaultSettings (repl files))
+    go (Bytecompile,opt,files) =
+              runOrFail (Conf opt Bytecompile) $ mapM_ compileFile files
+    go (RunVM,opt,files) =
+              runOrFail (Conf opt RunVM) $ mapM_ compileFile files
     go (m,opt, files) =
               runOrFail (Conf opt m) $ mapM_ compileFile files
 
@@ -118,12 +124,23 @@ loadFile f = do
 
 compileFile ::  MonadFD4 m => FilePath -> m ()
 compileFile f = do
-    i <- getInter
-    setInter False
-    printFD4 ("Abriendo "++f++"...")
-    decls <- loadFile f
-    mapM_ handleDecl decls
-    setInter i
+  m <- getMode
+  i <- getInter
+  setInter False
+  case m of
+    Bytecompile -> do
+      decls_sterm <- loadFile f
+      let decls_term = map elabDecl decls_sterm in
+        do
+          decls_tterm <- mapM tcDecl decls_term
+          bc <- bytecompileModule decls_tterm
+          liftIO $ bcWrite bc (replaceExtension f "bc")
+--    RunMV -> do
+    _ -> do
+      printFD4 ("Abriendo "++f++"...")
+      decls <- loadFile f -- m [Decl STerm]
+      mapM_ handleDecl decls
+  setInter i
 
 parseIO ::  MonadFD4 m => String -> P a -> String -> m a
 parseIO filename p x = case runP p x filename of
