@@ -156,7 +156,7 @@ bytecompileModule m = let m' = global2free m in do
 
 -- transformar variables globales en free
 global2free :: Module -> Module -- [Decl TTerm]
-global2free xs = map (\ (Decl p n t) -> (Decl p n (global2free' t))) xs
+global2free = map (\ (Decl p n t) -> Decl p n (global2free' t))
 
 global2free' :: TTerm -> TTerm
 global2free' (V i (Global n)) = V i (Free n)
@@ -171,7 +171,7 @@ global2free' t = t -- incluye V Bound, V Free and Const
 
 -- procesar let anidados
 processNestedLets :: Module -> TTerm
-processNestedLets (m:[]) = declBody m
+processNestedLets [m] = declBody m
 processNestedLets (m:ms) = let
   p = declPos m
   ty = NatTy -- TODO: corregir el tipo, ver Decl
