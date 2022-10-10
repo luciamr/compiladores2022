@@ -198,14 +198,15 @@ runBC bc = runBC'' bc [] []
 
 val2string :: Val -> String
 val2string (I n) = "I " ++ (show n)
-val2string (Fun e bc) = "Fun " ++ (intercalate "," (map val2string e)) ++ (showBC bc)
-val2string (RA e bc) = "RA " ++ (intercalate "," (map val2string e)) ++ (showBC bc)
+val2string (Fun e bc) = "(Fun " ++ intercalate ";" (map val2string e) ++ showBC bc ++ ")"
+val2string (RA e bc) = "(RA " ++ intercalate ";" (map val2string e) ++ showBC bc  ++ ")"
 
 runBC'' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
 runBC'' bc e s = do
-  printFD4 $ showBC bc
-  printFD4 $ intercalate "," (map val2string e)
-  printFD4 $ intercalate "," (map val2string s)
+  -- printFD4 $ "BC: " ++ showBC bc
+  -- printFD4 $ "Env: " ++ intercalate ";" (map val2string e) -- no usar con fix
+  -- printFD4 $ "Stack: " ++ intercalate ";" (map val2string s) -- no usar con fix
+  -- printFD4 "----------"
   runBC' bc e s
 
 runBC' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
