@@ -3,3 +3,32 @@ let succ =
 		x + 1
 
 let a = print "succ 2 = " (succ 2)
+let b = print "succ 10 = " (succ 10)
+
+let resta =
+	fun(x : Nat) ->
+		fun(y : Nat) ->
+			x - y
+
+let c = print "resta 5 8" (resta 5 8)
+let d = print "resta 8 5" (resta 8 5)
+
+let e = print "prueba ifz -> 10" (ifz 0 then 10 else 20)
+let f = print "prueba ifz -> 200" (ifz 2 then 100 else 200)
+
+let mul =
+	fix (mul': Nat -> Nat -> Nat)(m : Nat) ->
+		fun(n : Nat) ->
+			ifz n then 0 else m + (mul' m (n-1))
+
+let g = print "mul 5 2" (mul 5 2)
+let h = print "mul 5 0" (mul 5 0)
+
+let fact =
+	fix (fact' : Nat -> Nat)(m : Nat) ->
+		ifz (m - 1) then 1 else (mul m (fact' (m-1)))
+
+let i = print "fact 5" (fact 5)
+let j = print "fact 0" (fact 0)
+
+
