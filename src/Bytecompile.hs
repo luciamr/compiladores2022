@@ -96,6 +96,7 @@ showOps (SUB:xs)         = "SUB" : showOps xs
 showOps (FIX:xs)         = "FIX" : showOps xs
 showOps (STOP:xs)        = "STOP" : showOps xs
 showOps (JUMP:i:xs)      = "JUMP" : show i: showOps xs
+showOps (CJUMP:i:j:xs)   = "CJUMP" : show i: show j: showOps xs
 showOps (SHIFT:xs)       = "SHIFT" : showOps xs
 showOps (DROP:xs)        = "DROP" : showOps xs
 showOps (PRINT:xs)       = let (msg,_:rest) = span (/=NULL) xs
@@ -130,7 +131,7 @@ bcc (IfZ _ c t f) = do
   c' <- bcc c
   t' <- bcc t
   f' <- bcc f
-  return (c' ++ [CJUMP, length t'] ++ t' ++ f')
+  return (c' ++ [CJUMP, length t', length f'] ++ t' ++ f')
 bcc (Print _ s t) = do
   t' <- bcc t
   let s' = string2bc s in
@@ -230,10 +231,10 @@ runBC' (PRINTN:bc) e (I n:s) = do
     runBC'' bc e (I n:s)
 runBC' (SHIFT:bc) e (v:s) = runBC'' bc (v:e) s
 runBC' (DROP:bc) (v:e) s = runBC'' bc e s
-runBC' (CJUMP:l:bc) e (I n:s) =
+runBC' (CJUMP:lt:lf:bc) e (I n:s) =
   case n of
-    0 -> runBC'' bc e s
-    _ -> runBC'' (drop l bc) e s
+    0 -> runBC'' (take lt bc ++ drop (lt+lf) bc) e s
+    _ -> runBC'' (drop lt bc) e s
 runBC' (STOP:_) _ _ = return ()
 runBC' [] _ _  = failFD4  "runBC': no deberia haber llegado a aqui"
 
