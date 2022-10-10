@@ -171,6 +171,7 @@ handleDecl d = do
               -- td' <- if opt then optimize td else td
               ppterm <- ppDecl td  --td'
               printFD4 ppterm
+          _ -> failFD4 "handleDecl no definido para este modo"
 
       where
         typecheckDecl :: MonadFD4 m => Decl STerm -> m (Decl TTerm)
