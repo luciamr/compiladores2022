@@ -74,7 +74,7 @@ main = execParser opts >>= go
     go :: (Mode,Bool,[FilePath]) -> IO ()
     go (Interactive,opt,files) =
               runOrFail (Conf opt Interactive) (runInputT defaultSettings (repl files))
-    go (InteractiveCEK,opt,files) = -- TODO
+    go (InteractiveCEK,opt,files) =
               runOrFail (Conf opt InteractiveCEK) (runInputT defaultSettings (repl files))
     go (m,opt, files) =
               runOrFail (Conf opt m) $ mapM_ compileFile files
@@ -138,7 +138,7 @@ handleDecl d = do
               (Decl p x tt) <- typecheckDecl d
               te <- eval tt
               addDecl (Decl p x te)
-          InteractiveCEK -> do -- TODO
+          InteractiveCEK -> do
               (Decl p x tt) <- typecheckDecl d
               te <- runCEK tt
               addDecl (Decl p x te)
