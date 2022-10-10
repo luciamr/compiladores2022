@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-|
 Module      : CEK
 Description : Implementación de la máquina CEK (control statement, environment y continuation)
@@ -30,7 +31,7 @@ type Kont = [Frame]
 runCEK :: MonadFD4 m => TTerm -> m TTerm
 runCEK tt = do
     v <- search tt [] []
-    return (val2TTerm v)
+    return $ val2TTerm v
 
 search :: MonadFD4 m => TTerm -> Env -> Kont -> m Val
 search (Print _ s t) e k = search t e (FrmPrint s:k)
@@ -42,7 +43,7 @@ search (V _ (Free n)) _ _ = failFD4 $ "Error de ejecución: variable libre detec
 search (V _ (Global n)) e k = do
     mt <- lookupDecl n
     case mt of
-        Just t -> search t e k -- ok?
+        Just t -> search t e k
         Nothing -> failFD4 $ "Error de ejecución: variable no declarada: " ++ ppName n -- idem Eval
 search (Const _ (CNat n)) e k = destroy (N n) k
 search (Lam i nm ty (Sc1 t)) e k = destroy (Cls (ClsLam i e nm ty t)) k
@@ -51,17 +52,17 @@ search (Let _ nm ty u (Sc1 t)) e k = search u e (FrmLet e nm t:k)
 
 destroy :: MonadFD4 m => Val -> Kont -> m Val
 destroy v [] = return v
-destroy (N i) ((FrmPrint s):k) = do printFD4 (s++show i)
+destroy (N i) ((FrmPrint s):k) = do printFD4 (s++" "++show i)
                                     destroy (N i) k
 destroy (Cls _) ((FrmPrint s):k) = failFD4 "Error de tipo en runtime! : Print"
 destroy (N i) ((FrmBOpT e o t):k) = search t e (FrmBOpV o (N i):k)
-destroy (N i1) ((FrmBOpV o (N i2)):k) =  destroy (N (semOp o i1 i2)) k
+destroy (N i2) ((FrmBOpV o (N i1)):k) =  destroy (N (semOp o i1 i2)) k
 destroy (N _) ((FrmBOpV o (Cls _)):k) =  failFD4 "Error de tipo en runtime! : BinaryOp" -- TODO: pprint del operador
 destroy (N 0) ((FrmIfZ e tt te):k) = search tt e k
 destroy (N _) ((FrmIfZ e tt te):k) = search te e k
 destroy (Cls c) ((FrmApp e t):k) = search t e (FrmCls c:k)
 destroy v ((FrmCls (ClsLam _ e nm ty t)):k) = search t (v:e) k
-destroy v ((FrmCls (ClsFix i e nm1 ty1 nm2 ty2 t)):k) = search t (Cls (ClsFix i e nm1 ty1 nm2 ty2 t):v:e) k
+destroy v ((FrmCls c@(ClsFix i e nm1 ty1 nm2 ty2 t)):k) = search t (v:Cls c:e) k
 destroy v ((FrmLet e nm t):k) = search t (v:e) k
 
 val2TTerm :: Val -> TTerm

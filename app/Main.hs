@@ -158,7 +158,7 @@ handleDecl d = do
               (Decl p x tt) <- typecheckDecl d
               te <- eval tt
               addDecl (Decl p x te)
-          InteractiveCEK -> do -- TODO
+          InteractiveCEK -> do
               (Decl p x tt) <- typecheckDecl d
               te <- runCEK tt
               addDecl (Decl p x te)
