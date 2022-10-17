@@ -73,14 +73,15 @@ pattern FUNCTION = 4
 pattern CALL     = 5
 pattern ADD      = 6
 pattern SUB      = 7
+pattern JUMP     = 8
 pattern FIX      = 9
 pattern STOP     = 10
 pattern SHIFT    = 11
 pattern DROP     = 12
 pattern PRINT    = 13
 pattern PRINTN   = 14
-pattern JUMP     = 15
-pattern CJUMP    = 16
+pattern CJUMP    = 15
+pattern TAILCALL = 16
 
 --función util para debugging: muestra el Bytecode de forma más legible.
 showOps :: Bytecode -> [String]
@@ -96,7 +97,7 @@ showOps (SUB:xs)         = "SUB" : showOps xs
 showOps (FIX:xs)         = "FIX" : showOps xs
 showOps (STOP:xs)        = "STOP" : showOps xs
 showOps (JUMP:i:xs)      = ("JUMP off=" ++ show i) : showOps xs
-showOps (CJUMP:i:j:xs)   = "CJUMP" : show i: show j: showOps xs
+showOps (CJUMP:i:xs)     = ("CJUMP off=" ++ show i): showOps xs
 showOps (SHIFT:xs)       = "SHIFT" : showOps xs
 showOps (DROP:xs)        = "DROP" : showOps xs
 showOps (PRINT:xs)       = let (msg,_:rest) = span (/=NULL) xs
@@ -131,7 +132,7 @@ bcc (IfZ _ c t f) = do
   c' <- bcc c
   t' <- bcc t
   f' <- bcc f
-  return (c' ++ [CJUMP, length t', length f'] ++ t' ++ f')
+  return (c' ++ [CJUMP, length t'] ++ t' ++ [JUMP, length f'] ++ f')
 bcc (Print _ s t) = do
   t' <- bcc t
   let s' = string2bc s in
@@ -232,10 +233,11 @@ runBC' (PRINTN:bc) e (I n:s) = do
     runBC'' bc e (I n:s)
 runBC' (SHIFT:bc) e (v:s) = runBC'' bc (v:e) s
 runBC' (DROP:bc) (v:e) s = runBC'' bc e s
-runBC' (CJUMP:lt:lf:bc) e (I n:s) =
+runBC' (CJUMP:lt:bc) e (I n:s) =
   case n of
-    0 -> runBC'' (take lt bc ++ drop (lt+lf) bc) e s
-    _ -> runBC'' (drop lt bc) e s
+    0 -> runBC'' bc e s
+    _ -> runBC'' (drop (lt+2) bc) e s -- +2 para consumir JUMP
+runBC' (JUMP:lf:bc) e s = runBC'' (drop lf bc) e s
 runBC' (STOP:_) _ _ = return ()
 runBC' [] _ _  = failFD4  "runBC': no deberia haber llegado a aqui"
 
