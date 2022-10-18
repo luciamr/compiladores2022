@@ -103,11 +103,25 @@ showOps (DROP:xs)        = "DROP" : showOps xs
 showOps (PRINT:xs)       = let (msg,_:rest) = span (/=NULL) xs
                            in ("PRINT " ++ show (bc2string msg)) : showOps rest
 showOps (PRINTN:xs)      = "PRINTN" : showOps xs
-showOps (ADD:xs)         = "ADD" : showOps xs
+showOps (TAILCALL:xs)    = "TAILCALL" : showOps xs
 showOps (x:xs)           = show x : showOps xs
 
 showBC :: Bytecode -> String
 showBC = intercalate "; " . showOps
+
+bccT :: MonadFD4 m => TTerm -> m Bytecode
+bccT (App _ f t) = do
+  f' <- bccT f
+  t' <- bccT t
+  return $ f' ++ t' ++ [TAILCALL]
+bccT (IfZ _ c t f) = do
+  c' <- bcc c
+  t' <- bccT t
+  f' <- bccT f
+  return $ c' ++ [CJUMP, length t'] ++ t' ++ [JUMP, length f'] ++ f'
+bccT t = do
+  t' <- bcc t
+  return $ t' ++ [RETURN]
 
 bcc :: MonadFD4 m => TTerm -> m Bytecode
 bcc (Const _ (CNat n)) = return [CONST, n]
@@ -116,31 +130,31 @@ bcc (BinaryOp _ op t1 t2) = do
   t1' <- bcc t1
   t2' <- bcc t2
   case op of
-    Add -> return (t1' ++ t2' ++ [ADD])
-    Sub -> return (t1' ++ t2' ++ [SUB])
+    Add -> return $ t1' ++ t2' ++ [ADD]
+    Sub -> return $ t1' ++ t2' ++ [SUB]
 bcc (App _ f t) = do
   f' <- bcc f
   t' <- bcc t
-  return (f' ++ t' ++ [CALL])
+  return $ f' ++ t' ++ [CALL]
 bcc (Lam _ _ _ (Sc1 t)) = do
-  t' <- bcc t
-  return ([FUNCTION, length t'] ++ t' ++ [RETURN])
+  t' <- bccT t
+  return $ [FUNCTION, length t'] ++ t'
 bcc (Fix _ nm1 _ nm2 _ (Sc2 t)) = do
   t' <- bcc t
-  return ([FUNCTION, length t'] ++ t' ++ [RETURN, FIX])
+  return $ [FUNCTION, length t'] ++ t' ++ [RETURN, FIX]
 bcc (IfZ _ c t f) = do
   c' <- bcc c
   t' <- bcc t
   f' <- bcc f
-  return (c' ++ [CJUMP, length t'] ++ t' ++ [JUMP, length f'] ++ f')
+  return $ c' ++ [CJUMP, length t'] ++ t' ++ [JUMP, length f'] ++ f'
 bcc (Print _ s t) = do
   t' <- bcc t
   let s' = string2bc s in
-    return ([PRINT] ++ s' ++ [NULL] ++ t' ++ [PRINTN])
+    return $ [PRINT] ++ s' ++ [NULL] ++ t' ++ [PRINTN]
 bcc (Let _ nm _ t1  (Sc1 t2)) = do
   t1' <- bcc t1
   t2' <- bcc t2
-  return (t1' ++ [SHIFT] ++ t2' ++ [DROP])
+  return $ t1' ++ [SHIFT] ++ t2' ++ [DROP]
 bcc t = failFD4 "bcc: no deberia haber llegado a aqui"
 
 -- ord/chr devuelven los codepoints unicode, o en otras palabras
@@ -153,8 +167,8 @@ bc2string = map chr
 
 bytecompileModule :: MonadFD4 m => Module -> m Bytecode
 bytecompileModule m = let m' = global2free m in do
-  bc <- bcc (processNestedLets m')
-  return (bc ++ [STOP])
+  bc <- bccT (processNestedLets m')
+  return $ bc ++ [STOP]
 
 -- transformar variables globales en free
 global2free :: Module -> Module -- [Decl TTerm]
