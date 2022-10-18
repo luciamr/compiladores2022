@@ -106,6 +106,19 @@ static inline env env_push(env e, value v)
 }
 
 /*
+ * Devuelve el i-esimo value del entorno.
+ */
+static inline value env_get(env e, int i)
+{
+	env *pe = e;
+	while(i) {
+		pe = pe->next;
+	}
+	return pe->value;
+}
+
+
+/*
  * Sólo para debugging: devuelve la longitud de un entorno.
  */
 static int env_len(env e)
@@ -194,8 +207,9 @@ void run(code init_c)
 		/* Consumimos un opcode y lo inspeccionamos. */
 		switch(*c++) {
 		case ACCESS: {
-			/* implementame */
-			abort();
+			int pos = *c++;
+			(*s++).i = env_get(e, pos);
+			break;
 		}
 
 		case CONST: {
@@ -325,13 +339,14 @@ void run(code init_c)
 		}
 
 		case SHIFT: {
-			/* implementame */
-			abort();
+			value v = *--s;
+			e = env_push(e, v);
+			break;
 		}
 
 		case DROP: {
-			/* implementame */
-			abort();
+			e = e->next;
+			break;
 		}
 
 		case PRINTN: {
@@ -347,6 +362,23 @@ void run(code init_c)
 
 			break;
 		}
+
+		case CJUMP: {
+			uint32_t cond = (*--s).i;
+			int leng = *c++;
+			// false
+			if cond {
+				c += leng+2;
+			}
+			break;
+		}
+
+		case JUMP: {
+			int leng = *c++;
+			c += leng;
+			break;
+		}
+
 
 		default:
 			quit("FATAL: opcode no reconocido: %d", *(c-1));
