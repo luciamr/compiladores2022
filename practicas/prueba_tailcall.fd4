@@ -1,0 +1,26 @@
+let suma =
+	fix (suma' : Nat -> Nat -> Nat)(m : Nat) ->
+		fun(n : Nat) ->
+			ifz n then m
+			else suma' (1 + m) (n - 1)
+
+let k = print "suma 0 3" (suma 0 3)
+let l = print "suma 3 0" (suma 3 0)
+let m = print "suma 2 3" (suma 2 3)
+
+let succ =
+	fun(x : Nat) ->
+		x + 1
+
+let succ' =
+	fun(x : Nat) ->
+		(succ x) + 1
+
+let succ'' =
+	fun(x : Nat) ->
+		succ (x+1)
+
+
+let n = print "succ 2" (succ 2)
+let o = print "succ' 2" (succ' 2)
+let p = print "succ'' 2" (succ'' 2)
