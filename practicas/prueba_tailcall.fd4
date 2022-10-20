@@ -20,7 +20,6 @@ let succ'' =
 	fun(x : Nat) ->
 		succ (x+1)
 
-
 let n = print "succ 2" (succ 2)
 let o = print "succ' 2" (succ' 2)
 let p = print "succ'' 2" (succ'' 2)

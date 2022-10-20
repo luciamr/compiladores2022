@@ -30,5 +30,3 @@ let fact =
 
 let i = print "fact 5" (fact 5)
 let j = print "fact 0" (fact 0)
-
-
