@@ -33,6 +33,7 @@ data Mode =
   | Typecheck
   -- | Bytecompile
   -- | RunVM
+  | Optimizer
   -- | CC
   -- | Canon
   -- | Assembler

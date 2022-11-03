@@ -22,6 +22,7 @@ import Data.Char ( isSpace )
 import Control.Exception ( catch , IOException )
 import System.IO ( hPrint, stderr, hPutStrLn )
 import Data.Maybe ( fromMaybe )
+import Data.List ( intercalate )
 
 import System.Exit ( exitWith, ExitCode(ExitFailure) )
 import Options.Applicative
@@ -30,9 +31,10 @@ import Global
 import Errors
 import Lang
 import Parse ( P, tm, program, declOrTm, runP )
-import Elab ( elab )
+import Elab ( elab, elabDecl )
 import Eval ( eval )
 import CEK ( runCEK )
+import Optimizer ( optimize )
 import PPrint ( pp , ppTy, ppDecl )
 import MonadFD4
 import TypeChecker ( tc, tcDecl )
@@ -50,6 +52,7 @@ parseMode = (,) <$>
   -- <|> flag' Bytecompile (long "bytecompile" <> short 'm' <> help "Compilar a la BVM")
   -- <|> flag' RunVM (long "runVM" <> short 'r' <> help "Ejecutar bytecode en la BVM")
       <|> flag Interactive Interactive ( long "interactive" <> short 'i' <> help "Ejecutar en forma interactiva")
+      <|> flag' Optimizer ( long "optimizer" <> short 'o' <> help "Ejecutar optimizador")
   -- <|> flag' CC ( long "cc" <> short 'c' <> help "Compilar a código C")
   -- <|> flag' Canon ( long "canon" <> short 'n' <> help "Imprimir canonicalización")
   -- <|> flag' Assembler ( long "assembler" <> short 'a' <> help "Imprimir Assembler resultante")
@@ -118,12 +121,27 @@ loadFile f = do
 
 compileFile ::  MonadFD4 m => FilePath -> m ()
 compileFile f = do
-    i <- getInter
-    setInter False
-    printFD4 ("Abriendo "++f++"...")
-    decls <- loadFile f
-    mapM_ handleDecl decls
-    setInter i
+  m <- getMode
+  i <- getInter
+  setInter False
+  case m of
+    Optimizer -> do
+      decls_sterm <- loadFile f
+      let decls_term = map elabDecl decls_sterm in
+        do
+          decls_tterm <- mapM (tcDecl >=> \d -> addDecl d >> return d) decls_term
+          ps <- mapM ppDecl decls_tterm
+          printFD4 $ intercalate "\n" ps 
+          op <- mapM (\(Decl p x tt) -> do
+            tt' <- optimize tt
+            return (Decl p x tt')) decls_tterm
+          pso <- mapM ppDecl op
+          printFD4 $ intercalate "\n" pso
+    _ -> do
+      printFD4 ("Abriendo "++f++"...")
+      decls <- loadFile f -- m [Decl STerm]
+      mapM_ handleDecl decls
+  setInter i
 
 parseIO ::  MonadFD4 m => String -> P a -> String -> m a
 parseIO filename p x = case runP p x filename of
