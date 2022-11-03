@@ -18,7 +18,7 @@ import MonadFD4
 
 import TypeChecker ( tc )
 import Lang (TTerm)
-s
+
 maxRuns :: Int
 maxRuns = 10
 
@@ -28,71 +28,59 @@ optimize = optimize' maxRuns
 optimize' :: MonadFD4 m => Int -> TTerm -> m TTerm
 optimize' 0 t = return t
 optimize' n t = do
-    t1 <- constantFolding t
-    t2 <- constantPropagation t1
+    t1 <- visit t constantFolding
+    t2 <- visit t1 constantPropagation
     optimize' (n-1) t2
 
-constantFolding :: MonadFD4 m => TTerm -> m TTerm
-constantFolding v@(V _ _) = return v
-constantFolding c@(Const _ _) = return c
-constantFolding (Lam i nm ty (Sc1 t)) = return (Lam i nm ty (Sc1 (constantFolding t)))
-constantFolding (Fix i nm1 ty1 nm2 ty2 (Sc2 t)) = return (Fix i nm1 ty1 nm2 ty2 (Sc2 (constantFolding t)))
-constantFolding (App i t1 t2) = do
-    t1' <- constantFolding t1
-    t2' <- constantFolding t2
-    return (App i t1' t2')
-constantFolding (Print i s t) = return (Print i s (constantFolding t))
-constantFolding (BinaryOp i op (Const i1 (CNat n1)) (Const i2 (CNat n2))) = do
-  case op of
-    Add -> return (BinaryOp i op (Const i1 (CNat (n1+n2))))
-    Sub -> return (BinaryOp i op (Const i1 (CNat (n1-n2))))
-constantFolding (BinaryOp i op t (Const i2 (CNat 0))) = return t
-constantFolding (BinaryOp i op (Const i1 (CNat 0)) t) = do
-  case op of
-    Add -> return t
-    Sub -> (Const i2 (CNat 0))
-constantFolding (BinaryOp i op t1 t2) = do
-    t1' <- constantFolding t1
-    t2' <- constantFolding t2
-    return (BinaryOp i op t1' t2')
-constantFolding (IfZ i (Const i1 (CNat n)) t f) = do
-  case n of
-    0 -> return $ constantFolding t
-    _ -> return $ constantFolding f
-constantFolding (IfZ i c t f) = do
-  c' <- constantFolding c
-  t' <- constantFolding t
-  f' <- constantFolding f
-  return (IfZ i c' t' f')
-constantFolding (Let i nm ty t1 (Sc1 t2)) = do
-    t1' <- constantFolding t1
-    t2' <- constantFolding t2
-    return (Let i nm ty t1' (Sc1 t2'))
-constantFolding t = failFD4 "constantFolding: no deberia haber llegado a aqui"
+-- TODO: visit con scopes
+visit :: MonadFD4 m => TTerm -> (TTerm -> TTerm) -> m TTerm
+visit v@(V _ _) f = return v
+visit c@(Const _ _) f = return c
+visit (Lam i nm ty (Sc1 t)) f = do
+  t' <- visit t f
+  return $ f (Lam i nm ty (Sc1 t'))
+visit (Fix i nm1 ty1 nm2 ty2 (Sc2 t)) f = do
+  t' <- visit t f
+  return $ f (Fix i nm1 ty1 nm2 ty2 (Sc2 t'))
+visit (App i t1 t2) f = do
+  t1' <- visit t1 f
+  t2' <- visit t2 f
+  return $ f (App i t1' t2')
+visit (Print i s t) f = do
+  t' <- visit t f
+  return (Print i s t')
+visit (BinaryOp i op t1 t2) f = do
+  t1' <- visit t1 f
+  t2' <- visit t2 f
+  return $ f (BinaryOp i op t1' t2')
+visit (IfZ i ct tt ft) f = do
+  ct' <- visit ct f
+  tt' <- visit tt f
+  ft' <- visit ft f
+  return $ f (IfZ i ct' tt' ft')
+visit (Let i nm ty t1 (Sc1 t2)) f = do
+  t1' <- visit t1 f
+  t2' <- visit t2 f
+  return $ f (Let i nm ty t1' (Sc1 t2'))
+visit t f = failFD4 "visit: no deberia haber llegado a aqui"
 
-constantPropagation :: MonadFD4 m => TTerm -> m TTerm
-constantPropagation v@(V _ _) = return v
-constantPropagation c@(Const _ _) = return c
-constantPropagation l@(Lam i nm ty (Sc1 t)) = return (Lam i nm ty (Sc1 (constantPropagation t)))
-constantPropagation (Fix i nm1 ty1 nm2 ty2 (Sc2 t)) = return (Fix i nm1 ty1 nm2 ty2 (Sc2 (constantPropagation t)))
-constantPropagation (App i t1 t2) = do
-    t1' <- constantPropagation t1
-    t2' <- constantPropagation t2
-    return (App i t1' t2')
-constantPropagation (Print i s t) = return (Print i s (constantPropagation t))
-constantPropagation (BinaryOp i op t1 t2) = do
-    t1' <- constantPropagation t1
-    t2' <- constantPropagation t2
-    return (BinaryOp i op t1' t2')
-constantPropagation (IfZ i c t f) = do
-  c' <- constantPropagation c
-  t' <- constantPropagation t
-  f' <- constantPropagation f
-  return (IfZ i c' t' f')
-constantPropagation (Let i nm ty c@(Const (CNat n)) (Sc1 t)) = do
-    return (subst c (Sc1 (constantPropagation t)))
-constantPropagation (Let i nm ty t1 (Sc1 t2)) = do
-    t1' <- constantPropagation t1
-    t2' <- constantPropagation t2
-    return (Let i nm ty t1' (Sc1 t2'))
-constantPropagation t = failFD4 "constantPropagation: no deberia haber llegado a aqui"
+constantFolding :: TTerm -> TTerm
+constantFolding (BinaryOp i op (Const i1 (CNat n1)) (Const i2 (CNat n2))) =
+  case op of
+    Add -> Const i1 (CNat (n1+n2))
+    Sub -> Const i1 (CNat (n1-n2)) -- no puede ser negativo, buscar funcion ya implementada
+constantFolding (BinaryOp i op t (Const i2 (CNat 0))) = t
+constantFolding (BinaryOp i op (Const i1 (CNat 0)) t) =
+  case op of
+    Add -> t
+    Sub -> (Const i1 (CNat 0))
+constantFolding (IfZ i (Const i1 (CNat n)) t f) =
+  case n of
+    0 -> constantFolding t
+    _ -> constantFolding f
+constantFolding t = t
+
+-- TODO: reemplazo de una variable por otra
+constantPropagation :: TTerm -> TTerm
+constantPropagation (Let i1 nm ty c@(Const i2 (CNat n)) (Sc1 t)) = subst c (Sc1 t)
+constantPropagation t = t
