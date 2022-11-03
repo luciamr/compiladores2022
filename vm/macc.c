@@ -110,11 +110,11 @@ static inline env env_push(env e, value v)
  */
 static inline value env_get(env e, int i)
 {
-	env *pe = e;
+	env pe = e;
 	while(i) {
 		pe = pe->next;
 	}
-	return pe->value;
+	return pe->v;
 }
 
 
@@ -208,7 +208,7 @@ void run(code init_c)
 		switch(*c++) {
 		case ACCESS: {
 			int pos = *c++;
-			(*s++).i = env_get(e, pos);
+			*s++ = env_get(e, pos);
 			break;
 		}
 
@@ -367,7 +367,7 @@ void run(code init_c)
 			uint32_t cond = (*--s).i;
 			int leng = *c++;
 			// false
-			if cond {
+			if (cond) {
 				c += leng+2;
 			}
 			break;
