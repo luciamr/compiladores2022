@@ -109,20 +109,6 @@ showOps (x:xs)           = show x : showOps xs
 showBC :: Bytecode -> String
 showBC = intercalate "; " . showOps
 
-bccT :: MonadFD4 m => TTerm -> m Bytecode
-bccT (App _ f t) = do
-  f' <- bccT f
-  t' <- bccT t
-  return $ f' ++ t' ++ [TAILCALL]
-bccT (IfZ _ c t f) = do
-  c' <- bcc c
-  t' <- bccT t
-  f' <- bccT f
-  return $ c' ++ [CJUMP, length t'] ++ t' ++ [JUMP, length f'] ++ f'
-bccT t = do
-  t' <- bcc t
-  return $ t' ++ [RETURN]
-
 bcc :: MonadFD4 m => TTerm -> m Bytecode
 bcc (Const _ (CNat n)) = return [CONST, n]
 bcc (V _ (Bound i)) = return [ACCESS, i]
@@ -138,9 +124,9 @@ bcc (App _ f t) = do
   return $ f' ++ t' ++ [CALL]
 bcc (Lam _ _ _ (Sc1 t)) = do
   t' <- bccT t
-  return $ [FUNCTION, length t'] ++ t'
+  return $ [FUNCTION, length t'] ++ t' ++ [RETURN]
 bcc (Fix _ nm1 _ nm2 _ (Sc2 t)) = do
-  t' <- bcc t
+  t' <- bccT t
   return $ [FUNCTION, length t'] ++ t' ++ [RETURN, FIX]
 bcc (IfZ _ c t f) = do
   c' <- bcc c
@@ -157,6 +143,24 @@ bcc (Let _ nm _ t1  (Sc1 t2)) = do
   return $ t1' ++ [SHIFT] ++ t2' ++ [DROP]
 bcc t = failFD4 "bcc: no deberia haber llegado a aqui"
 
+bccT :: MonadFD4 m => TTerm -> m Bytecode
+bccT (App _ f t) = do
+  f' <- bcc f
+  t' <- bcc t
+  return $ f' ++ t' ++ [TAILCALL]
+bccT (IfZ _ c t f) = do
+  c' <- bcc c
+  t' <- bccT t
+  f' <- bccT f
+  return $ c' ++ [CJUMP, length t'] ++ t' ++ [JUMP, length f'] ++ f'
+bccT (Let _ nm _ t1  (Sc1 t2)) = do
+  t1' <- bcc t1
+  t2' <- bccT t2
+  return $ t1' ++ [SHIFT] ++ t2' ++ [DROP]
+bccT t = do
+  t' <- bcc t
+  return $ t' ++ [RETURN]
+
 -- ord/chr devuelven los codepoints unicode, o en otras palabras
 -- la codificación UTF-32 del caracter.
 string2bc :: String -> Bytecode
@@ -167,7 +171,7 @@ bc2string = map chr
 
 bytecompileModule :: MonadFD4 m => Module -> m Bytecode
 bytecompileModule m = let m' = global2free m in do
-  bc <- bccT (processNestedLets m')
+  bc <- bcc (processNestedLets m')
   return $ bc ++ [STOP]
 
 -- transformar variables globales en free
@@ -218,10 +222,10 @@ val2string (RA e bc) = "(RA " ++ intercalate ";" (map val2string e) ++ showBC bc
 
 runBC'' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
 runBC'' bc e s = do
-  -- printFD4 $ "BC: " ++ showBC bc
-  -- printFD4 $ "Env: " ++ intercalate ";" (map val2string e) -- no usar con fix
-  -- printFD4 $ "Stack: " ++ intercalate ";" (map val2string s) -- no usar con fix
-  -- printFD4 "----------"
+  printFD4 $ "BC: " ++ showBC bc
+  printFD4 $ "Env: " ++ intercalate ";" (map val2string e) -- no usar con fix
+  printFD4 $ "Stack: " ++ intercalate ";" (map val2string s) -- no usar con fix
+  printFD4 "----------"
   runBC' bc e s
 
 runBC' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
@@ -235,6 +239,7 @@ runBC' (RETURN:_) _ (v:(RA e bc):s) = runBC'' bc e (v:s)
 runBC' (FIX:bc) e ((Fun ef bcf):s) =
   let efix = Fun efix bcf:ef in
     runBC'' bc e (Fun efix bcf:s)
+runBC' (TAILCALL:bc) e (v:(Fun ef bcf):s) = runBC'' bcf (v:ef) s
 runBC' (PRINT:bc) e s = do
   let mi = elemIndex NULL bc in
     case mi of
