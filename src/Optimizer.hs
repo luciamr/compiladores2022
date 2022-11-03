@@ -89,13 +89,10 @@ constantPropagation (IfZ i c t f) = do
   t' <- constantPropagation t
   f' <- constantPropagation f
   return (IfZ i c' t' f')
-constantPropagation (Let i nm ty (Const (CNat n)) (Sc1 t)) = do
-    t1' <- constantPropagation t1
-    t2' <- constantPropagation t2
-    return (Let i nm ty t1' (Sc1 t2'))
+constantPropagation (Let i nm ty c@(Const (CNat n)) (Sc1 t)) = do
+    return (subst c (Sc1 (constantPropagation t)))
 constantPropagation (Let i nm ty t1 (Sc1 t2)) = do
     t1' <- constantPropagation t1
     t2' <- constantPropagation t2
     return (Let i nm ty t1' (Sc1 t2'))
 constantPropagation t = failFD4 "constantPropagation: no deberia haber llegado a aqui"
-
