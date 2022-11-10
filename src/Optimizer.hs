@@ -13,11 +13,10 @@ module Optimizer
  where
 
 import Lang
-import Subst
+import Subst ( close, close2, open, open2, subst )
+import Eval ( semOp )
 import MonadFD4
-
-import TypeChecker ( tc )
-import Lang (TTerm)
+    ( failFD4, MonadFD4, setOptimized, getOptimized, getFreshVar )
 
 maxRuns :: Int
 maxRuns = 10
@@ -28,59 +27,70 @@ optimize = optimize' maxRuns
 optimize' :: MonadFD4 m => Int -> TTerm -> m TTerm
 optimize' 0 t = return t
 optimize' n t = do
+    setOptimized 0
     t1 <- visit t constantFolding
     t2 <- visit t1 constantPropagation
-    optimize' (n-1) t2
+    opt <- getOptimized
+    case opt of
+      0 -> optimize' 0 t
+      _ -> optimize' (n-1) t2
 
--- TODO: visit con scopes
-visit :: MonadFD4 m => TTerm -> (TTerm -> TTerm) -> m TTerm
+visit :: MonadFD4 m => TTerm -> (TTerm -> m TTerm) -> m TTerm
 visit v@(V _ _) f = return v
 visit c@(Const _ _) f = return c
-visit (Lam i nm ty (Sc1 t)) f = do
-  t' <- visit t f
-  return $ f (Lam i nm ty (Sc1 t'))
-visit (Fix i nm1 ty1 nm2 ty2 (Sc2 t)) f = do
-  t' <- visit t f
-  return $ f (Fix i nm1 ty1 nm2 ty2 (Sc2 t'))
+visit (Lam i nm ty sc) f = do
+  fresh <- getFreshVar
+  t' <- visit (open fresh sc) f
+  f (Lam i nm ty (close fresh t'))
+visit (Fix i nm1 ty1 nm2 ty2 sc) f = do
+  fresh1 <- getFreshVar
+  fresh2 <- getFreshVar
+  t' <- visit (open2 fresh1 fresh2 sc) f
+  f (Fix i nm1 ty1 nm2 ty2 (close2 fresh1 fresh2 t'))
 visit (App i t1 t2) f = do
   t1' <- visit t1 f
   t2' <- visit t2 f
-  return $ f (App i t1' t2')
+  f (App i t1' t2')
 visit (Print i s t) f = do
   t' <- visit t f
   return (Print i s t')
 visit (BinaryOp i op t1 t2) f = do
   t1' <- visit t1 f
   t2' <- visit t2 f
-  return $ f (BinaryOp i op t1' t2')
+  f (BinaryOp i op t1' t2')
 visit (IfZ i ct tt ft) f = do
   ct' <- visit ct f
   tt' <- visit tt f
   ft' <- visit ft f
-  return $ f (IfZ i ct' tt' ft')
-visit (Let i nm ty t1 (Sc1 t2)) f = do
-  t1' <- visit t1 f
-  t2' <- visit t2 f
-  return $ f (Let i nm ty t1' (Sc1 t2'))
+  f (IfZ i ct' tt' ft')
+visit (Let i nm ty t sc) f = do
+  t' <- visit t f
+  fresh <- getFreshVar
+  t'' <- visit (open fresh sc) f
+  f (Let i nm ty t' (close fresh t''))
 visit t f = failFD4 "visit: no deberia haber llegado a aqui"
 
-constantFolding :: TTerm -> TTerm
-constantFolding (BinaryOp i op (Const i1 (CNat n1)) (Const i2 (CNat n2))) =
-  case op of
-    Add -> Const i1 (CNat (n1+n2))
-    Sub -> Const i1 (CNat (n1-n2)) -- no puede ser negativo, buscar funcion ya implementada
-constantFolding (BinaryOp i op t (Const i2 (CNat 0))) = t
-constantFolding (BinaryOp i op (Const i1 (CNat 0)) t) =
-  case op of
+constantFolding :: MonadFD4 m => TTerm -> m TTerm
+constantFolding (BinaryOp i op (Const i1 (CNat n1)) (Const i2 (CNat n2))) = do
+  setOptimized 1
+  return $ Const i1 (CNat (semOp op n1 n2))
+constantFolding (BinaryOp i op t (Const i2 (CNat 0))) = do
+  setOptimized 1
+  return t
+constantFolding (BinaryOp i op (Const i1 (CNat 0)) t) = do
+  setOptimized 1
+  return (case op of
     Add -> t
-    Sub -> (Const i1 (CNat 0))
-constantFolding (IfZ i (Const i1 (CNat n)) t f) =
+    Sub -> Const i1 (CNat 0))
+constantFolding (IfZ i (Const i1 (CNat n)) t f) = do
+  setOptimized 1
   case n of
     0 -> constantFolding t
     _ -> constantFolding f
-constantFolding t = t
+constantFolding t = return t
 
--- TODO: reemplazo de una variable por otra
-constantPropagation :: TTerm -> TTerm
-constantPropagation (Let i1 nm ty c@(Const i2 (CNat n)) (Sc1 t)) = subst c (Sc1 t)
-constantPropagation t = t
+constantPropagation :: MonadFD4 m => TTerm -> m TTerm
+constantPropagation (Let i nm ty c@(Const _ _) (Sc1 t)) = do
+  setOptimized 1
+  return $ subst c (Sc1 t)
+constantPropagation t = return t
