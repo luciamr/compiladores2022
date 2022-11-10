@@ -93,4 +93,7 @@ constantPropagation :: MonadFD4 m => TTerm -> m TTerm
 constantPropagation (Let i nm ty c@(Const _ _) (Sc1 t)) = do
   setOptimized 1
   return $ subst c (Sc1 t)
+constantPropagation (Let i nm ty v@(V _ _) (Sc1 t)) = do
+  setOptimized 1
+  return $ subst v (Sc1 t)
 constantPropagation t = return t
