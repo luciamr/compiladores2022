@@ -33,6 +33,7 @@ module MonadFD4 (
   failFD4,
   addDecl,
   catchErrors,
+  getFreshVar,
   MonadFD4,
   module Control.Monad.Except,
   module Control.Monad.State)
@@ -121,6 +122,12 @@ catchErrors  :: MonadFD4 m => m a -> m (Maybe a)
 catchErrors c = catchError (Just <$> c)
                            (\e -> liftIO $ hPrint stderr e
                               >> return Nothing)
+
+getFreshVar :: MonadFD4 m => m Name
+getFreshVar = do
+                n <- gets freshCtr
+                modify (\s -> s {freshCtr = n + 1})
+                return $ "v_" ++ show n ++ "_"
 
 ----
 -- Importante, no eta-expandir porque GHC no hace una

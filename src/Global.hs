@@ -18,6 +18,8 @@ data GlEnv = GlEnv {
   lfile :: String,      -- ^ Último archivo cargado.
   cantDecl :: Int,      -- ^ Cantidad de declaraciones desde la última carga
   glb :: [Decl TTerm]  -- ^ Entorno con declaraciones globales
+  glb :: [Decl TTerm],  -- ^ Entorno con declaraciones globales
+  freshCtr :: Int,      -- ^ Contador para creación de variables frescas
 }
 
 -- ^ Entorno de tipado de declaraciones globales
