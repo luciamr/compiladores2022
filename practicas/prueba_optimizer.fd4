@@ -1,0 +1,8 @@
+let a = 4 + 5
+let b = 4 - 5
+let c = 5
+let d = c + 0
+let e = c - 0
+let f = ifz 0 then 1 else 2
+let g = ifz 1 then 1 else 2
+let h = (let (i:Nat) = 3 in i + 1)
