@@ -35,7 +35,7 @@ module MonadFD4 (
   catchErrors,
   setOptimized,
   getOptimized,
-  getFreshVar,
+  getFreshCounter,
   MonadFD4,
   module Control.Monad.Except,
   module Control.Monad.State)
@@ -131,11 +131,11 @@ setOptimized n = modify (\s -> s {optCtr = n})
 getOptimized :: MonadFD4 m => m Int
 getOptimized = gets optCtr
 
-getFreshVar :: MonadFD4 m => m Name
-getFreshVar = do
-                n <- gets freshCtr
-                modify (\s -> s {freshCtr = n + 1})
-                return $ "v_" ++ show n ++ "_"
+getFreshCounter :: MonadFD4 m => m Int
+getFreshCounter = do
+                    n <- gets freshCtr
+                    modify (\s -> s {freshCtr = n + 1})
+                    return n
 
 ----
 -- Importante, no eta-expandir porque GHC no hace una

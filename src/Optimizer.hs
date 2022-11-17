@@ -16,7 +16,7 @@ import Lang
 import Subst ( close, close2, open, open2, subst )
 import Eval ( semOp )
 import MonadFD4
-    ( failFD4, MonadFD4, setOptimized, getOptimized, getFreshVar )
+    ( failFD4, MonadFD4, setOptimized, getOptimized, getFreshCounter )
 
 maxRuns :: Int
 maxRuns = 10
@@ -69,6 +69,11 @@ visit (Let i nm ty t sc) f = do
   t'' <- visit (open fresh sc) f
   f (Let i nm ty t' (close fresh t''))
 visit t f = failFD4 "visit: no deberia haber llegado a aqui"
+
+getFreshVar :: MonadFD4 m => m Name
+getFreshVar = do
+                n <- getFreshCounter
+                return $ "v_" ++ show n ++ "_"
 
 constantFolding :: MonadFD4 m => TTerm -> m TTerm
 constantFolding (BinaryOp i op (Const i1 (CNat n1)) (Const i2 (CNat n2))) = do
