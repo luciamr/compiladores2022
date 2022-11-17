@@ -33,9 +33,10 @@ data Mode =
     Interactive
   | InteractiveCEK
   | Typecheck
-  -- | Bytecompile
-  -- | RunVM
   | Optimizer
+  | Eval
+  | Bytecompile
+  | RunVM
   -- | CC
   -- | Canon
   -- | Assembler
@@ -47,4 +48,4 @@ data Conf = Conf {
 
 -- | Valor del estado inicial
 initialEnv :: GlEnv
-initialEnv = GlEnv True "" 0 [] 0 0
+initialEnv = GlEnv False "" 0 [] 0 0

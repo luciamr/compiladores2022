@@ -53,6 +53,7 @@ parseMode = (,) <$>
   -- <|> flag' RunVM (long "runVM" <> short 'r' <> help "Ejecutar bytecode en la BVM")
       <|> flag Interactive Interactive ( long "interactive" <> short 'i' <> help "Ejecutar en forma interactiva")
       <|> flag' Optimizer ( long "optimizer" <> short 'o' <> help "Ejecutar optimizador")
+      <|> flag Eval        Eval        (long "eval" <> short 'e' <> help "Evaluar programa")
   -- <|> flag' CC ( long "cc" <> short 'c' <> help "Compilar a código C")
   -- <|> flag' Canon ( long "canon" <> short 'n' <> help "Imprimir canonicalización")
   -- <|> flag' Assembler ( long "assembler" <> short 'a' <> help "Imprimir Assembler resultante")
@@ -77,7 +78,7 @@ main = execParser opts >>= go
     go :: (Mode,Bool,[FilePath]) -> IO ()
     go (Interactive,opt,files) =
               runOrFail (Conf opt Interactive) (runInputT defaultSettings (repl files))
-    go (InteractiveCEK,opt,files) = -- TODO
+    go (InteractiveCEK,opt,files) =
               runOrFail (Conf opt InteractiveCEK) (runInputT defaultSettings (repl files))
     go (m,opt, files) =
               runOrFail (Conf opt m) $ mapM_ compileFile files
@@ -93,6 +94,7 @@ runOrFail c m = do
 
 repl :: (MonadFD4 m, MonadMask m) => [FilePath] -> InputT m ()
 repl args = do
+       lift $ setInter True
        lift $ catchErrors $ mapM_ compileFile args
        s <- lift get
        when (inter s) $ liftIO $ putStrLn
@@ -131,14 +133,14 @@ compileFile f = do
         do
           decls_tterm <- mapM (tcDecl >=> \d -> addDecl d >> return d) decls_term
           ps <- mapM ppDecl decls_tterm
-          printFD4 $ intercalate "\n" ps 
+          printFD4 $ intercalate "\n" ps
           op <- mapM (\(Decl p x tt) -> do
             tt' <- optimize tt
             return (Decl p x tt')) decls_tterm
           pso <- mapM ppDecl op
           printFD4 $ intercalate "\n" pso
     _ -> do
-      printFD4 ("Abriendo "++f++"...")
+      when i $ printFD4 ("Abriendo "++f++"...")
       decls <- loadFile f -- m [Decl STerm]
       mapM_ handleDecl decls
   setInter i
@@ -148,6 +150,11 @@ parseIO filename p x = case runP p x filename of
                   Left e  -> throwError (ParseErr e)
                   Right r -> return r
 
+evalDecl :: MonadFD4 m => Decl TTerm -> m (Decl TTerm)
+evalDecl (Decl p x e) = do
+    e' <- eval e
+    return (Decl p x e')
+
 handleDecl ::  MonadFD4 m => Decl STerm -> m ()
 handleDecl d = do
         m <- getMode
@@ -156,7 +163,7 @@ handleDecl d = do
               (Decl p x tt) <- typecheckDecl d
               te <- eval tt
               addDecl (Decl p x te)
-          InteractiveCEK -> do -- TODO
+          InteractiveCEK -> do
               (Decl p x tt) <- typecheckDecl d
               te <- runCEK tt
               addDecl (Decl p x te)
@@ -169,6 +176,12 @@ handleDecl d = do
               -- td' <- if opt then optimize td else td
               ppterm <- ppDecl td  --td'
               printFD4 ppterm
+
+          Eval -> do
+              td <- typecheckDecl d
+              -- td' <- if opt then optimizeDecl td else return td
+              ed <- evalDecl td
+              addDecl ed
 
       where
         typecheckDecl :: MonadFD4 m => Decl STerm -> m (Decl TTerm)
