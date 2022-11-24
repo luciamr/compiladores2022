@@ -1,5 +1,7 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
-module ClosureConvert where
+module ClosureConvert 
+    (runCC)
+where
 
 import IR
 import Lang
@@ -19,9 +21,9 @@ getIrTy :: Ty -> IrTy
 getIrTy NatTy = IrInt
 getIrTy (FunTy _ _) = IrClo
 
-toIrLets :: [(Name, Ty)] -> Name -> Ir -> Int -> Ir
-toIrLets (v:vs) c_nm t i  = IrLet (fst v) IrClo (IrAccess (IrVar c_nm) (getIrTy (snd v)) i) (lts' vs c_nm t (i+1))
-toIrLets [] _ t _ = t
+buildIrLets :: [(Name, Ty)] -> Name -> Ir -> Int -> Ir
+buildIrLets (v:vs) c_nm t i  = IrLet (fst v) IrClo (IrAccess (IrVar c_nm) (getIrTy (snd v)) i) (buildIrLets vs c_nm t (i+1))
+buildIrLets [] _ t _ = t
 
 closureConvert :: TTerm -> MonadCC Ir
 -- -- closureConvert (V _ (Bound _)) no deberia pasar
@@ -34,8 +36,7 @@ closureConvert l@(Lam info nm ty sc) = do
     let vs = freeVarsTy l
     fun_nm <- getFreshName "lam"
     e_nm <- getFreshName "env"
-    x_nm <- getFreshName "x"
-    tell [IrFun fun_nm (getIrTy (getTy l)) [(e_nm, IrClo), (x_nm, getIrTy ty)] (toIrLets vs e_nm t' 1)]
+    tell [IrFun fun_nm (getIrTy (getTy l)) [(e_nm, IrClo), (fresh, getIrTy ty)] (buildIrLets vs e_nm t' 1)]
     return $ MkClosure fun_nm (map (IrVar . fst) vs)
 closureConvert (App (_, ty) t1 t2) = do
     nm <- getFreshName "app"
@@ -59,7 +60,7 @@ closureConvert f@(Fix _ nm1 ty1 nm2 ty2 sc) = do
     let vs = freeVarsTy f
     fix_nm <- getFreshName "fix"
     c_nm <- getFreshName "clos"
-    tell [IrFun fix_nm (getIrTy t1) [(c_nm, IrClo), (nm2, getIrTy ty2)] (IrLet nm1 (getIrTy ty1) (IrVar c_nm) (toIrLets vs c_nm t' 1))]
+    tell [IrFun fix_nm (getIrTy ty1) [(c_nm, IrClo), (fresh2, getIrTy ty2)] (IrLet fresh1 (getIrTy ty1) (IrVar c_nm) (buildIrLets vs c_nm t' 1))]
     return $ MkClosure fix_nm (map (IrVar . fst) vs)
 closureConvert (IfZ _ ct tt ft) = do
     ct' <- closureConvert ct
@@ -68,16 +69,16 @@ closureConvert (IfZ _ ct tt ft) = do
     return $ IrIfZ ct' tt' ft'
 closureConvert l@(Let _ nm ty t sc) = do
     t' <- closureConvert t
-    fresh <- getFreshName "v"
-    s' <- closureConvert (open fresh sc)
     let_nm <- getFreshName "let"
+    s' <- closureConvert (open let_nm sc)
     return $ IrLet let_nm (getIrTy (getTy l)) t' s'
 
 runCC' :: Decl TTerm -> MonadCC IrDecl
-runCC' (Decl p nm t) = IrVal nm (getIrTy (getTy t)) (closureConvert t)
+runCC' (Decl p nm t) = do
+    t' <- closureConvert t
+    return $ IrVal nm (getIrTy (getTy t)) t'
 
-runCC :: [Decl TTerm] -> [IrDecl]
+runCC :: [Decl TTerm] -> IrDecls 
 runCC ds = do
-
-   let ((decls1, f_stt), decls2) = runWriter (runStateT (mapM runCC' ds) 0) in
-    decls1 ++ decls2
+    let ((decls1, f_stt), decls2) = runWriter (runStateT (mapM runCC' ds) 0) in
+        IrDecls (decls1 ++ decls2)
