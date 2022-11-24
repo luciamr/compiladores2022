@@ -1,59 +1,83 @@
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module ClosureConvert where
 
 import IR
 import Lang
+import Subst ( open, open2 )
 import Control.Monad.State
 import Control.Monad.Writer
-import MonadFD4
 
+type MonadCC = StateT Int (Writer [IrDecl])
 
--- runStateT -> put, get
--- writer -> tell
-
-getFreshName :: MonadFD4 m => String -> m Name
+getFreshName :: String -> MonadCC Name
 getFreshName s = do
-                    n <- getFreshCounter
-                    return $ s ++ "_" ++ show n ++ "_"
+    n <- get
+    put $ n+1
+    return $ s ++ "_" ++ show n ++ "_"
 
 getIrTy :: Ty -> IrTy
-getIrTy (NatTy _) = IrInt
+getIrTy NatTy = IrInt
 getIrTy (FunTy _ _) = IrClo
 
-closureConvert :: TTerm -> StateT Int (Writer [IrDecl]) Ir
+toIrLets :: [(Name, Ty)] -> Name -> Ir -> Int -> Ir
+toIrLets (v:vs) c_nm t i  = IrLet (fst v) IrClo (IrAccess (IrVar c_nm) (getIrTy (snd v)) i) (lts' vs c_nm t (i+1))
+toIrLets [] _ t _ = t
+
+closureConvert :: TTerm -> MonadCC Ir
 -- -- closureConvert (V _ (Bound _)) no deberia pasar
 closureConvert (V _ (Free nm)) = return $ IrVar nm
 closureConvert (V _ (Global nm)) = return $ IrVar nm
 closureConvert (Const _ c) = return $ IrConst c
-closureConvert (Lam info nm ty sc) = do
+closureConvert l@(Lam info nm ty sc) = do
     fresh <- getFreshName "v"
-    t <- open fresh sc
-    t' <- closureConvert t
-    vs <- freeVarsTy t
-    fun_nm <- getFreshName "fun"
+    t' <-  closureConvert (open fresh sc)
+    let vs = freeVarsTy l
+    fun_nm <- getFreshName "lam"
     e_nm <- getFreshName "env"
     x_nm <- getFreshName "x"
-    let decl = IrFun fun_nm (getIrTy (getTy info)) [(e_nm, IrClo), (x_nm, getIrTy ty)] (lts' vs e_nm t' 1)
-    in
-        modify (\d -> {decls = decls ++ [d]}) decl -- esta mal, usar tell
-    return $ MkClosure fun_nm (map (\v -> IrVar (fst v)) vs)
-    where   lts' :: [(Name, Ty)] -> Ir -> Int -> Ir -> Ir 
-            lts' v:vs c_nm t i  = IrLet (fst v) IrClo (IrAccess c_nm (snd v) i) (lts' vs c_nm t (i+1))
-            lts' [] _ t _ = t
+    tell [IrFun fun_nm (getIrTy (getTy l)) [(e_nm, IrClo), (x_nm, getIrTy ty)] (toIrLets vs e_nm t' 1)]
+    return $ MkClosure fun_nm (map (IrVar . fst) vs)
 closureConvert (App (_, ty) t1 t2) = do
-    nm <- getFreshName
+    nm <- getFreshName "app"
     i1 <- closureConvert t1
     i2 <- closureConvert t2
     return $ IrLet nm IrClo i1 (IrCall (IrAccess (IrVar nm) IrFunTy 0) [IrVar nm, i2] (getIrTy ty))
-closureConvert (Print _ s t) = do -- agregar let para forzar orden
+closureConvert (Print _ s t) = do
+     p_nm <- getFreshName "print"
      i <- closureConvert t
-     return $  IrPrint s i
-closureConvert (BinaryOp _ op t1 t2) = do -- agregar lets para forzar el orden
+     return $ IrLet p_nm IrInt i (IrPrint s (IrVar p_nm))
+closureConvert (BinaryOp _ op t1 t2) = do
+     bop_nm_1 <- getFreshName "bop1"
      i1 <- closureConvert t1
+     bop_nm_2 <- getFreshName "bop2"
      i2 <- closureConvert t2
-     return $ IrBinaryOp op i1 i2
--- --Fix info Name Ty Name Ty (Scope2 info var)
--- --IfZ info (Tm info var) (Tm info var) (Tm info var)
--- --Let info Name Ty (Tm info var)  (Scope info var)
+     return $ IrLet bop_nm_1 (getIrTy (getTy t1)) i1 (IrLet bop_nm_2 (getIrTy (getTy t2)) i2 (IrBinaryOp op (IrVar bop_nm_1) (IrVar bop_nm_2)))
+closureConvert f@(Fix _ nm1 ty1 nm2 ty2 sc) = do
+    fresh1 <- getFreshName "v"
+    fresh2 <- getFreshName "v"
+    t' <-  closureConvert (open2 fresh1 fresh2 sc)
+    let vs = freeVarsTy f
+    fix_nm <- getFreshName "fix"
+    c_nm <- getFreshName "clos"
+    tell [IrFun fix_nm (getIrTy t1) [(c_nm, IrClo), (nm2, getIrTy ty2)] (IrLet nm1 (getIrTy ty1) (IrVar c_nm) (toIrLets vs c_nm t' 1))]
+    return $ MkClosure fix_nm (map (IrVar . fst) vs)
+closureConvert (IfZ _ ct tt ft) = do
+    ct' <- closureConvert ct
+    tt' <- closureConvert tt
+    ft' <- closureConvert ft
+    return $ IrIfZ ct' tt' ft'
+closureConvert l@(Let _ nm ty t sc) = do
+    t' <- closureConvert t
+    fresh <- getFreshName "v"
+    s' <- closureConvert (open fresh sc)
+    let_nm <- getFreshName "let"
+    return $ IrLet let_nm (getIrTy (getTy l)) t' s'
 
+runCC' :: Decl TTerm -> MonadCC IrDecl
+runCC' (Decl p nm t) = IrVal nm (getIrTy (getTy t)) (closureConvert t)
 
--- runCC :: [Decl Term] -> [IrDecl]
+runCC :: [Decl TTerm] -> [IrDecl]
+runCC ds = do
+
+   let ((decls1, f_stt), decls2) = runWriter (runStateT (mapM runCC' ds) 0) in
+    decls1 ++ decls2
