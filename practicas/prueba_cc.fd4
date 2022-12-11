@@ -1,0 +1,16 @@
+let a = 4 + 5
+let b = 4 - 5
+let c = 5
+let f = ifz a then 1 else 2
+let g = ifz b then 1 else 2
+let h = (let (i:Nat) = 3 in i + 1)
+let resta =
+	fun(x : Nat) ->
+		fun(y : Nat) ->
+			x - y
+let mul =
+	fix (mul': Nat -> Nat -> Nat)(m : Nat) ->
+		fun(n : Nat) ->
+			ifz n then 0 else m + (mul' m (n-1))
+let i = resta c 2
+let j = mul 3 c

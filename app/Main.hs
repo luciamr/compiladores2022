@@ -35,14 +35,15 @@ import Elab ( elab, elabDecl )
 import Eval ( eval )
 import CEK ( runCEK )
 import Optimizer ( optimize )
+import ClosureConvert ( runCC )
+import C ( ir2Cfile )
 import PPrint ( pp , ppTy, ppDecl )
 import MonadFD4
 import TypeChecker ( tc, tcDecl )
+import System.FilePath ( replaceExtension )
 
 prompt :: String
 prompt = "FD4> "
-
-
 
 -- | Parser de banderas
 parseMode :: Parser (Mode,Bool)
@@ -53,8 +54,8 @@ parseMode = (,) <$>
   -- <|> flag' RunVM (long "runVM" <> short 'r' <> help "Ejecutar bytecode en la BVM")
       <|> flag Interactive Interactive ( long "interactive" <> short 'i' <> help "Ejecutar en forma interactiva")
       <|> flag' Optimizer ( long "optimizer" <> short 'o' <> help "Ejecutar optimizador")
-      <|> flag Eval        Eval        (long "eval" <> short 'e' <> help "Evaluar programa")
-  -- <|> flag' CC ( long "cc" <> short 'c' <> help "Compilar a código C")
+      <|> flag Eval Eval (long "eval" <> short 'e' <> help "Evaluar programa")
+      <|> flag' CC ( long "cc" <> short 'c' <> help "Compilar a código C")
   -- <|> flag' Canon ( long "canon" <> short 'n' <> help "Imprimir canonicalización")
   -- <|> flag' Assembler ( long "assembler" <> short 'a' <> help "Imprimir Assembler resultante")
   -- <|> flag' Build ( long "build" <> short 'b' <> help "Compilar")
@@ -139,6 +140,13 @@ compileFile f = do
             return (Decl p x tt')) decls_tterm
           pso <- mapM ppDecl op
           printFD4 $ intercalate "\n" pso
+    CC -> do
+      decls_sterm <- loadFile f
+      let decls_term = map elabDecl decls_sterm in
+        do
+          decls_tterm <- mapM (tcDecl >=> \d -> addDecl d >> return d) decls_term
+          ps <- mapM ppDecl decls_tterm
+          liftIO $ ir2Cfile (runCC decls_tterm) (replaceExtension f "c")
     _ -> do
       when i $ printFD4 ("Abriendo "++f++"...")
       decls <- loadFile f -- m [Decl STerm]
