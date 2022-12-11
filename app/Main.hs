@@ -36,10 +36,11 @@ import Eval ( eval )
 import CEK ( runCEK )
 import Optimizer ( optimize )
 import ClosureConvert ( runCC )
-import C ( ir2C )
+import C ( ir2Cfile )
 import PPrint ( pp , ppTy, ppDecl )
 import MonadFD4
 import TypeChecker ( tc, tcDecl )
+import System.FilePath ( replaceExtension )
 
 prompt :: String
 prompt = "FD4> "
@@ -145,11 +146,7 @@ compileFile f = do
         do
           decls_tterm <- mapM (tcDecl >=> \d -> addDecl d >> return d) decls_term
           ps <- mapM ppDecl decls_tterm
-          -- printFD4 $ intercalate "\n" ps
-          let irds = runCC decls_tterm in
-            let ccode = ir2C irds in do
-              -- printFD4 $ show irds
-              printFD4 ccode
+          liftIO $ ir2Cfile (runCC decls_tterm) (replaceExtension f "c")
     _ -> do
       when i $ printFD4 ("Abriendo "++f++"...")
       decls <- loadFile f -- m [Decl STerm]
