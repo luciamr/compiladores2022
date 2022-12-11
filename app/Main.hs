@@ -23,6 +23,7 @@ import Control.Exception ( catch , IOException )
 import System.IO ( hPrint, stderr, hPutStrLn )
 import System.FilePath ( replaceExtension )
 import Data.Maybe ( fromMaybe )
+import Data.List ( intercalate )
 
 import System.Exit ( exitWith, ExitCode(ExitFailure) )
 import Options.Applicative
@@ -34,6 +35,7 @@ import Parse ( P, tm, program, declOrTm, runP )
 import Elab ( elab, elabDecl )
 import Eval ( eval )
 import CEK ( runCEK )
+import Optimizer ( optimize )
 import Bytecompile ( bcWrite, bcRead, showBC, bytecompileModule, runBC )
 import PPrint ( pp , ppTy, ppDecl )
 import MonadFD4
@@ -52,6 +54,8 @@ parseMode = (,) <$>
       <|> flag' Bytecompile (long "bytecompile" <> short 'm' <> help "Compilar a la BVM")
       <|> flag' RunVM (long "runVM" <> short 'r' <> help "Ejecutar bytecode en la BVM")
       <|> flag Interactive Interactive ( long "interactive" <> short 'i' <> help "Ejecutar en forma interactiva")
+      <|> flag' Optimizer ( long "optimizer" <> short 'o' <> help "Ejecutar optimizador")
+      <|> flag Eval        Eval        (long "eval" <> short 'e' <> help "Evaluar programa")
   -- <|> flag' CC ( long "cc" <> short 'c' <> help "Compilar a código C")
   -- <|> flag' Canon ( long "canon" <> short 'n' <> help "Imprimir canonicalización")
   -- <|> flag' Assembler ( long "assembler" <> short 'a' <> help "Imprimir Assembler resultante")
@@ -96,6 +100,7 @@ runOrFail c m = do
 
 repl :: (MonadFD4 m, MonadMask m) => [FilePath] -> InputT m ()
 repl args = do
+       lift $ setInter True
        lift $ catchErrors $ mapM_ compileFile args
        s <- lift get
        when (inter s) $ liftIO $ putStrLn
@@ -139,8 +144,20 @@ compileFile f = do
     RunVM -> do
       bc <- liftIO $ bcRead f
       runBC bc
+    Optimizer -> do
+      decls_sterm <- loadFile f
+      let decls_term = map elabDecl decls_sterm in
+        do
+          decls_tterm <- mapM (tcDecl >=> \d -> addDecl d >> return d) decls_term
+          ps <- mapM ppDecl decls_tterm
+          printFD4 $ intercalate "\n" ps
+          op <- mapM (\(Decl p x tt) -> do
+            tt' <- optimize tt
+            return (Decl p x tt')) decls_tterm
+          pso <- mapM ppDecl op
+          printFD4 $ intercalate "\n" pso
     _ -> do
-      printFD4 ("Abriendo "++f++"...")
+      when i $ printFD4 ("Abriendo "++f++"...")
       decls <- loadFile f -- m [Decl STerm]
       mapM_ handleDecl decls
   setInter i
@@ -149,6 +166,11 @@ parseIO ::  MonadFD4 m => String -> P a -> String -> m a
 parseIO filename p x = case runP p x filename of
                   Left e  -> throwError (ParseErr e)
                   Right r -> return r
+
+evalDecl :: MonadFD4 m => Decl TTerm -> m (Decl TTerm)
+evalDecl (Decl p x e) = do
+    e' <- eval e
+    return (Decl p x e')
 
 handleDecl ::  MonadFD4 m => Decl STerm -> m ()
 handleDecl d = do
@@ -171,8 +193,12 @@ handleDecl d = do
               -- td' <- if opt then optimize td else td
               ppterm <- ppDecl td  --td'
               printFD4 ppterm
+          Eval -> do
+              td <- typecheckDecl d
+              -- td' <- if opt then optimizeDecl td else return td
+              ed <- evalDecl td
+              addDecl ed
           _ -> failFD4 "handleDecl no definido para este modo"
-
       where
         typecheckDecl :: MonadFD4 m => Decl STerm -> m (Decl TTerm)
         typecheckDecl (Decl p x t) = tcDecl (Decl p x (elab t))
