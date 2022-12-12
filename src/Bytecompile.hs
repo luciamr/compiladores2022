@@ -27,8 +27,6 @@ import Data.Binary.Get ( getWord32le, isEmpty )
 
 import Data.List ( intercalate, elemIndex )
 import Data.Char
-import TypeChecker ( tc )
-import Lang ( TTerm )
 import PPrint ( ppName )
 
 type Opcode = Int
@@ -148,7 +146,6 @@ bcc (Let _ _ _ t1  (Sc1 t2)) = do
   t1' <- bcc t1
   t2' <- bcc t2
   return $ t1' ++ [SHIFT] ++ t2' ++ [DROP]
-bcc t = failFD4 "bcc: no deberia haber llegado a aqui"
 
 bccT :: MonadFD4 m => TTerm -> m Bytecode
 bccT (App _ f t) = do
