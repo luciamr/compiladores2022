@@ -237,10 +237,10 @@ val2string (RA e bc) = "(RA " ++ intercalate ";" (map val2string e) ++ showBC bc
 
 runBC'' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
 runBC'' bc e s = do
-  printFD4 $ "BC: " ++ showBC bc
+  -- printFD4 $ "BC: " ++ showBC bc
   -- printFD4 $ "Env: " ++ intercalate ";" (map val2string e) -- no usar con fix
   -- printFD4 $ "Stack: " ++ intercalate ";" (map val2string s) -- no usar con fix
-  printFD4 "----------"
+  -- printFD4 "----------"
   runBC' bc e s
 
 runBC' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
@@ -249,7 +249,7 @@ runBC' (ACCESS:i:bc) e s = runBC'' bc e ((e!!i):s)
 runBC' (ADD:bc) e ((I n2):(I n1):s) = runBC'' bc e (I (n1+n2):s)
 runBC' (SUB:bc) e ((I n2):(I n1):s) = let r = max 0 (n1-n2) in runBC'' bc e (I r:s)
 runBC' (CALL:bc) e (v:(Fun ef bcf):s) = runBC'' bcf (v:ef) (RA e bc:s)
-runBC' (FUNCTION:l:bc) e s = runBC'' (drop (l+1) bc) e (Fun e (take (l+1) bc):s)
+runBC' (FUNCTION:l:bc) e s = runBC'' (drop l bc) e (Fun e (take l bc):s)
 runBC' (RETURN:_) _ (v:(RA e bc):s) = runBC'' bc e (v:s)
 runBC' (FIX:bc) e ((Fun ef bcf):s) =
   let efix = Fun efix bcf:ef in
