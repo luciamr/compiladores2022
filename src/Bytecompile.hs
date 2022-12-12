@@ -124,10 +124,10 @@ bcc (App _ f t) = do
   return $ f' ++ t' ++ [CALL]
 bcc (Lam _ _ _ (Sc1 t)) = do
   t' <- bccT t
-  return $ [FUNCTION, length t'] ++ t' ++ [RETURN]
-bcc (Fix _ nm1 _ nm2 _ (Sc2 t)) = do
+  return $ [FUNCTION, length t'] ++ t'
+bcc (Fix _ _ _ _ _ (Sc2 t)) = do
   t' <- bccT t
-  return $ [FUNCTION, length t'] ++ t' ++ [RETURN, FIX]
+  return $ [FUNCTION, length t'] ++ t' ++ [FIX]
 bcc (IfZ _ c t f) = do
   c' <- bcc c
   t' <- bcc t
@@ -137,7 +137,7 @@ bcc (Print _ s t) = do
   t' <- bcc t
   let s' = string2bc s in
     return $ [PRINT] ++ s' ++ [NULL] ++ t' ++ [PRINTN]
-bcc (Let _ nm _ t1  (Sc1 t2)) = do
+bcc (Let _ _ _ t1  (Sc1 t2)) = do
   t1' <- bcc t1
   t2' <- bcc t2
   return $ t1' ++ [SHIFT] ++ t2' ++ [DROP]
@@ -153,7 +153,7 @@ bccT (IfZ _ c t f) = do
   t' <- bccT t
   f' <- bccT f
   return $ c' ++ [CJUMP, length t'] ++ t' ++ [JUMP, length f'] ++ f'
-bccT (Let _ nm _ t1  (Sc1 t2)) = do
+bccT (Let _ _ _ t1  (Sc1 t2)) = do
   t1' <- bcc t1
   t2' <- bccT t2
   return $ t1' ++ [SHIFT] ++ t2' ++ [DROP]
@@ -223,8 +223,8 @@ val2string (RA e bc) = "(RA " ++ intercalate ";" (map val2string e) ++ showBC bc
 runBC'' :: MonadFD4 m => Bytecode -> Env -> Stack -> m ()
 runBC'' bc e s = do
   printFD4 $ "BC: " ++ showBC bc
-  printFD4 $ "Env: " ++ intercalate ";" (map val2string e) -- no usar con fix
-  printFD4 $ "Stack: " ++ intercalate ";" (map val2string s) -- no usar con fix
+  -- printFD4 $ "Env: " ++ intercalate ";" (map val2string e) -- no usar con fix
+  -- printFD4 $ "Stack: " ++ intercalate ";" (map val2string s) -- no usar con fix
   printFD4 "----------"
   runBC' bc e s
 
