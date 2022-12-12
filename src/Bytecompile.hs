@@ -168,6 +168,15 @@ bccT t = do
   t' <- bcc t
   return $ t' ++ [RETURN]
 
+bccS :: MonadFD4 m => TTerm -> m Bytecode
+bccS (Let _ _ _ t1  (Sc1 t2)) = do
+  t1' <- bcc t1
+  t2' <- bccS t2
+  return $ t1' ++ [SHIFT] ++ t2'
+bccS t = do
+  t' <- bcc t
+  return $ t' ++ [STOP]
+
 -- ord/chr devuelven los codepoints unicode, o en otras palabras
 -- la codificación UTF-32 del caracter.
 string2bc :: String -> Bytecode
@@ -178,8 +187,7 @@ bc2string = map chr
 
 bytecompileModule :: MonadFD4 m => Module -> m Bytecode
 bytecompileModule m = let m' = global2free m in do
-  bc <- bcc (processNestedLets m')
-  return $ bc ++ [STOP]
+  bccS (processNestedLets m')
 
 -- transformar variables globales en free
 global2free :: Module -> Module -- [Decl TTerm]
