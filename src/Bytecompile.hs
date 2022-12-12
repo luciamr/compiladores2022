@@ -28,7 +28,8 @@ import Data.Binary.Get ( getWord32le, isEmpty )
 import Data.List ( intercalate, elemIndex )
 import Data.Char
 import TypeChecker ( tc )
-import Lang (TTerm)
+import Lang ( TTerm )
+import PPrint ( ppName )
 
 type Opcode = Int
 type Bytecode = [Int]
@@ -112,6 +113,12 @@ showBC = intercalate "; " . showOps
 bcc :: MonadFD4 m => TTerm -> m Bytecode
 bcc (Const _ (CNat n)) = return [CONST, n]
 bcc (V _ (Bound i)) = return [ACCESS, i]
+bcc (V _ (Free _)) = failFD4 "bcc: no debería haber variables libres"
+bcc (V _ (Global nm)) = do
+  v <- lookupDecl nm
+  case v of
+      Just v' -> bcc v'
+      Nothing -> failFD4 $ "bcc: variable no declarada: " ++ ppName nm
 bcc (BinaryOp _ op t1 t2) = do
   t1' <- bcc t1
   t2' <- bcc t2
