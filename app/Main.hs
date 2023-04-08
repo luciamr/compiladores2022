@@ -22,6 +22,7 @@ import Data.Char ( isSpace )
 import Control.Exception ( catch , IOException )
 import System.IO ( hPrint, stderr, hPutStrLn )
 import Data.Maybe ( fromMaybe )
+import Data.List ( intercalate )
 
 import System.Exit ( exitWith, ExitCode(ExitFailure) )
 import Options.Applicative
@@ -30,26 +31,31 @@ import Global
 import Errors
 import Lang
 import Parse ( P, tm, program, declOrTm, runP )
-import Elab ( elab )
+import Elab ( elab, elabDecl )
 import Eval ( eval )
+import CEK ( runCEK )
+import Optimizer ( optimize )
+import ClosureConvert ( runCC )
+import C ( ir2Cfile )
 import PPrint ( pp , ppTy, ppDecl )
 import MonadFD4
 import TypeChecker ( tc, tcDecl )
+import System.FilePath ( replaceExtension )
 
 prompt :: String
 prompt = "FD4> "
-
-
 
 -- | Parser de banderas
 parseMode :: Parser (Mode,Bool)
 parseMode = (,) <$>
       (flag' Typecheck ( long "typecheck" <> short 't' <> help "Chequear tipos e imprimir el término")
-  -- <|> flag' InteractiveCEK (long "interactiveCEK" <> short 'k' <> help "Ejecutar interactivamente en la CEK")
+      <|> flag' InteractiveCEK (long "interactiveCEK" <> short 'k' <> help "Ejecutar interactivamente en la CEK")
   -- <|> flag' Bytecompile (long "bytecompile" <> short 'm' <> help "Compilar a la BVM")
   -- <|> flag' RunVM (long "runVM" <> short 'r' <> help "Ejecutar bytecode en la BVM")
       <|> flag Interactive Interactive ( long "interactive" <> short 'i' <> help "Ejecutar en forma interactiva")
-  -- <|> flag' CC ( long "cc" <> short 'c' <> help "Compilar a código C")
+      <|> flag' Optimizer ( long "optimizer" <> short 'o' <> help "Ejecutar optimizador")
+      <|> flag Eval Eval (long "eval" <> short 'e' <> help "Evaluar programa")
+      <|> flag' CC ( long "cc" <> short 'c' <> help "Compilar a código C")
   -- <|> flag' Canon ( long "canon" <> short 'n' <> help "Imprimir canonicalización")
   -- <|> flag' Assembler ( long "assembler" <> short 'a' <> help "Imprimir Assembler resultante")
   -- <|> flag' Build ( long "build" <> short 'b' <> help "Compilar")
@@ -73,6 +79,8 @@ main = execParser opts >>= go
     go :: (Mode,Bool,[FilePath]) -> IO ()
     go (Interactive,opt,files) =
               runOrFail (Conf opt Interactive) (runInputT defaultSettings (repl files))
+    go (InteractiveCEK,opt,files) =
+              runOrFail (Conf opt InteractiveCEK) (runInputT defaultSettings (repl files))
     go (m,opt, files) =
               runOrFail (Conf opt m) $ mapM_ compileFile files
 
@@ -87,6 +95,7 @@ runOrFail c m = do
 
 repl :: (MonadFD4 m, MonadMask m) => [FilePath] -> InputT m ()
 repl args = do
+       lift $ setInter True
        lift $ catchErrors $ mapM_ compileFile args
        s <- lift get
        when (inter s) $ liftIO $ putStrLn
@@ -115,17 +124,44 @@ loadFile f = do
 
 compileFile ::  MonadFD4 m => FilePath -> m ()
 compileFile f = do
-    i <- getInter
-    setInter False
-    printFD4 ("Abriendo "++f++"...")
-    decls <- loadFile f
-    mapM_ handleDecl decls
-    setInter i
+  m <- getMode
+  i <- getInter
+  setInter False
+  case m of
+    Optimizer -> do
+      decls_sterm <- loadFile f
+      let decls_term = map elabDecl decls_sterm in
+        do
+          decls_tterm <- mapM (tcDecl >=> \d -> addDecl d >> return d) decls_term
+          ps <- mapM ppDecl decls_tterm
+          printFD4 $ intercalate "\n" ps
+          op <- mapM (\(Decl p x tt) -> do
+            tt' <- optimize tt
+            return (Decl p x tt')) decls_tterm
+          pso <- mapM ppDecl op
+          printFD4 $ intercalate "\n" pso
+    CC -> do
+      decls_sterm <- loadFile f
+      let decls_term = map elabDecl decls_sterm in
+        do
+          decls_tterm <- mapM (tcDecl >=> \d -> addDecl d >> return d) decls_term
+          ps <- mapM ppDecl decls_tterm
+          liftIO $ ir2Cfile (runCC decls_tterm) (replaceExtension f "c")
+    _ -> do
+      when i $ printFD4 ("Abriendo "++f++"...")
+      decls <- loadFile f -- m [Decl STerm]
+      mapM_ handleDecl decls
+  setInter i
 
 parseIO ::  MonadFD4 m => String -> P a -> String -> m a
 parseIO filename p x = case runP p x filename of
                   Left e  -> throwError (ParseErr e)
                   Right r -> return r
+
+evalDecl :: MonadFD4 m => Decl TTerm -> m (Decl TTerm)
+evalDecl (Decl p x e) = do
+    e' <- eval e
+    return (Decl p x e')
 
 handleDecl ::  MonadFD4 m => Decl STerm -> m ()
 handleDecl d = do
@@ -134,6 +170,10 @@ handleDecl d = do
           Interactive -> do
               (Decl p x tt) <- typecheckDecl d
               te <- eval tt
+              addDecl (Decl p x te)
+          InteractiveCEK -> do
+              (Decl p x tt) <- typecheckDecl d
+              te <- runCEK tt
               addDecl (Decl p x te)
           Typecheck -> do
               f <- getLastFile
@@ -144,6 +184,12 @@ handleDecl d = do
               -- td' <- if opt then optimize td else td
               ppterm <- ppDecl td  --td'
               printFD4 ppterm
+
+          Eval -> do
+              td <- typecheckDecl d
+              -- td' <- if opt then optimizeDecl td else return td
+              ed <- evalDecl td
+              addDecl ed
 
       where
         typecheckDecl :: MonadFD4 m => Decl STerm -> m (Decl TTerm)

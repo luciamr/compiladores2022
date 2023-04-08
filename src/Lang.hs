@@ -51,7 +51,7 @@ data STy =
 
 type Name = String
 
-type STerm = STm Pos STy Name -- ^ 'STm' tiene 'Name's como variables ligadas y libres y globales, guarda posición
+type STerm = STm Pos Ty Name -- ^ 'STm' tiene 'Name's como variables ligadas y libres y globales, guarda posición
 
 newtype Const = CNat Int
   deriving Show
@@ -65,21 +65,6 @@ data Decl a = Decl
   , declName :: Name
   , declType :: Ty
   , declBody :: a
-  }
-  deriving (Show, Functor)
-
--- | tipo de datos de declaraciones superficiales, let y sinonimos de tipo
-data SDecl a =
-    LetDecl
-  { sdeclPos  :: Pos
-  , sdeclRec :: Bool
-  , sdeclBinds :: [(Name, STy)]
-  , sdeclBody :: a
-  }
-  | TyDecl
-  { sdeclPos  :: Pos
-  , sdeclName :: Name
-  , sdeclType :: STy
   }
   deriving (Show, Functor)
 
@@ -114,7 +99,7 @@ newtype Scope info var = Sc1 (Tm info var)
   deriving Functor
 newtype Scope2 info var = Sc2 (Tm info var)
   deriving Functor
-    
+
 instance (Show info, Show var) => Show (Scope info var) where
     show (Sc1 t) = "{"++show t++"}"
 
@@ -165,3 +150,19 @@ freeVars tm = nubSort $ go tm [] where
   go (IfZ _ c t e             ) xs = go c $ go t $ go e xs
   go (Const _ _               ) xs = xs
   go (Let _ _ _ e (Sc1 t)     ) xs = go e (go t xs)
+
+freeVarsTy :: TTerm -> [(Name, Ty)]
+freeVarsTy tm = go tm [] where
+  go t@(V _ (Free   v)          ) xs = (v, getTy t) : xs
+  go t@(V _ (Global v)          ) xs = (v, getTy t) : xs
+  go (V _ _                   ) xs = xs
+  go (Lam _ _ _ (Sc1 t)       ) xs = go t xs
+  go (App   _ l r             ) xs = go l $ go r xs
+  go (Print _ _ t             ) xs = go t xs
+  go (BinaryOp _ _ t u        ) xs = go t $ go u xs
+  go (Fix _ _ _ _ _ (Sc2 t)   ) xs = go t xs
+  go (IfZ _ c t e             ) xs = go c $ go t $ go e xs
+  go (Const _ _               ) xs = xs
+  go (Let _ _ _ e (Sc1 t)     ) xs = go e (go t xs)
+
+type Module = [Decl TTerm]

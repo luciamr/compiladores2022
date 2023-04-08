@@ -17,7 +17,9 @@ data GlEnv = GlEnv {
                         -- Es falso mientras se cargan archivos, pero luego puede ser verdadero.
   lfile :: String,      -- ^ Último archivo cargado.
   cantDecl :: Int,      -- ^ Cantidad de declaraciones desde la última carga
-  glb :: [Decl TTerm]  -- ^ Entorno con declaraciones globales
+  glb :: [Decl TTerm],  -- ^ Entorno con declaraciones globales
+  freshCtr :: Int,      -- ^ Contador para creación de variables frescas
+  optCtr :: Int         -- ^ Indica si hubo optimizaciones
 }
 
 -- ^ Entorno de tipado de declaraciones globales
@@ -29,11 +31,13 @@ tyEnv g = map (\(Decl _ n _ b) -> (n, getTy b))  (glb g)
 -}
 data Mode =
     Interactive
+  | InteractiveCEK
   | Typecheck
-  -- | InteractiveCEK
-  -- | Bytecompile
-  -- | RunVM
-  -- | CC
+  | Optimizer
+  | Eval
+  | Bytecompile
+  | RunVM
+  | CC
   -- | Canon
   -- | Assembler
   -- | Build
@@ -44,4 +48,4 @@ data Conf = Conf {
 
 -- | Valor del estado inicial
 initialEnv :: GlEnv
-initialEnv = GlEnv True "" 0 []
+initialEnv = GlEnv False "" 0 [] 0 0
